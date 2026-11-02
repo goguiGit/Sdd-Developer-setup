@@ -196,13 +196,13 @@ Para que todos los developers tengan siempre la última versión, el instalador 
 
 | | Windows | macOS y Linux |
 |---|---|---|
-| Mecanismo | Tarea del Programador de tareas `Claude sdd plugin update` (`StartWhenAvailable`: si el equipo estaba apagado, corre al encenderlo) | Entrada de `crontab` marcada con `# claude-sdd-plugin-update` |
+| Mecanismo | Tarea del Programador de tareas `Claude sdd plugin update` (`StartWhenAvailable`: si el equipo estaba apagado, corre al encenderlo) | macOS: LaunchAgent `~/Library/LaunchAgents/com.sdd.plugin-update.plist` (`StartCalendarInterval`: si el Mac dormía, corre al despertar). Linux: línea de `crontab` marcada `# claude-sdd-plugin-update` |
 | Cambiar la hora | `.\setup\install.ps1 -UpdateAt 09:30` | `UPDATE_AT=09:30 ./setup/install.sh` |
 | Instalar sin tarea | `-NoSchedule` | `NO_SCHEDULE=1 ./setup/install.sh` |
 | Quitar la tarea | `.\setup\install.ps1 -RemoveSchedule` | `./setup/install.sh --remove-schedule` |
 | Actualizar a mano | `.\setup\update.ps1` | `./setup/update.sh` |
 
-La tarea solo ejecuta los dos comandos de `claude plugin`; si Claude Code no está en el PATH del usuario a esa hora (por ejemplo, instalado solo en una shell), el log lo dirá y basta con lanzar el update a mano.
+La tarea solo ejecuta los dos comandos de `claude plugin`. En macOS y Linux el `PATH` del momento de instalar queda grabado en la tarea (launchd y cron arrancan con un PATH mínimo); si `claude` se mueve de sitio, vuelve a ejecutar el instalador. Si Claude Code no está en ese PATH a esa hora, el log lo dirá y basta con lanzar el update a mano.
 
 ## Ejemplo incluido
 
