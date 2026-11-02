@@ -4,6 +4,7 @@ Para quien mantiene este repo o quiere añadirle cosas. El uso está en el [`REA
 
 - [Componentes](#componentes)
 - [El plugin `sdd`](#el-plugin-sdd)
+- [Catálogo de skills](#catálogo-de-skills)
 - [El script](#el-script)
 - [El workflow de CI](#el-workflow-de-ci)
 - [Instalación y actualización](#instalación-y-actualización)
@@ -68,6 +69,13 @@ Reglas para tocarla:
 - Sin nombres de herramientas del host en el texto. La única dependencia es `${CLAUDE_PLUGIN_ROOT}`, que Claude Code define al cargar el plugin, para localizar `scripts/sdd.py`.
 - Lo que el script pueda comprobar no se explica en la skill; se le dice que ejecute el script.
 - La descripción del frontmatter es lo que Claude usa para decidir cuándo cargarla: debe contener las frases con las que alguien pediría el trabajo.
+
+## Catálogo de skills
+
+La definición de cada skill (disparador, qué hace, qué no, modelo, cómo cambiarlo) vive en [`SKILLS.md`](SKILLS.md) y se actualiza en el mismo commit que la skill. Resumen de lo que decide el modelo:
+
+- Una skill puede fijar `model: <alias>` en su frontmatter (Claude Code también admite `context: fork` y `agent` para ejecutarla en un subagente). Ninguna de las nuestras lo hace a propósito: `sdd` cambia de nivel por fase según `sdd.json` y las demás van con el modelo de la sesión.
+- El nivel por fase es configuración del repo del producto (`sdd.json` → `models`), no del plugin, para que cada equipo lo ajuste sin publicar una versión.
 
 ## El script
 

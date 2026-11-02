@@ -21,6 +21,7 @@ Marketplace de Claude Code con dos plugins: `sdd` (Spec-Driven Development míni
 | Principios de ingeniería independientes del lenguaje | `plugins/sdd/skills/sdd/references/principles.md` (principio + señal de ruptura); las reglas y convenciones de cada lenguaje van al `AGENTS.md` del repo del producto, no aquí |
 | Quién puede pedir, quién aprueba, qué es autoservicio | `README.md` ("Quién hace qué"), la sección "Nivel de intervención" de `SKILL.md` y la clave `selfService` de `sdd.json` |
 | El ejemplo narrado | `examples/happy-path/README.md`; si cambia el flujo, cambia el ejemplo en el mismo commit |
+| La definición de una skill (qué hace, cuándo, modelo) | `docs/SKILLS.md`, en el mismo commit que la skill. Ninguna skill fija `model` en el frontmatter; el nivel por fase va en `sdd.json` del repo del producto |
 | Una skill de librería nueva | `plugins/libraries/skills/<area>-<libreria>/SKILL.md` (30-60 líneas, descripción con las frases de uso); modelo: `masstransit-saga`. Nunca reglas SDD ahí |
 | Lo que valida el CI de los consumidores | `.github/workflows/sdd-checks.yml`, job `deltas` (`scan` + `index --check`); `script-tests` solo corre aquí |
 | Lo que recibe un repo nuevo | `templates/AGENTS.md` (real), `templates/CLAUDE.md` (solo `@AGENTS.md`, así lo leen Claude Code, Codex y Copilot) y `templates/sdd.json` |

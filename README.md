@@ -5,6 +5,7 @@ Una forma sencilla de trabajar con Claude Code en la que **primero se escribe qu
 Esta guía es para **usarlo**. Si quieres saber cómo está construido o cambiarlo, lee [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
 - [Qué resuelve](#qué-resuelve)
+- [Qué skills hay](#qué-skills-hay)
 - [Quién hace qué](#quién-hace-qué)
 - [Instalar en dos minutos](#instalar-en-dos-minutos)
 - [Preparar un repo](#preparar-un-repo)
@@ -39,6 +40,18 @@ flowchart LR
     A -- sí --> I["Código con TDD<br/>un requisito, un commit"]
     I --> PR["PR"] --> M["spec.md actualizado<br/>delta archivado"]
 ```
+
+## Qué skills hay
+
+Una skill es un comando que Claude Code aprende al instalar el plugin; se invoca escribiéndolo o el agente la elige solo cuando lo que pides encaja con su descripción.
+
+| Skill | Para qué | Cuándo la usas |
+|---|---|---|
+| `/sdd <id> [descripción]` | Llevar un cambio de principio a fin: escribe el delta, se detiene hasta que alguien lo aprueba, implementa con tests, fusiona en el spec al cerrar. Decide él en qué paso está por el estado del delta | Siempre que empieces, sigas o cierres un PBI, bug o tarea |
+| `/sdd-models` | Ver, recomendar o cambiar qué nivel de modelo usa cada fase, guardado en `sdd.json` | Cuando salen modelos nuevos o algo sale caro o flojo |
+| `masstransit-saga` (plugin `libraries`, opcional) | Cómo montar y probar una saga con MassTransit, con las trampas aprendidas | Al tocar una saga; se activa sola |
+
+La definición completa de cada una (qué hace, qué no hace, con qué modelo, y cómo se cambia) está en [`docs/SKILLS.md`](docs/SKILLS.md).
 
 ## Quién hace qué
 
