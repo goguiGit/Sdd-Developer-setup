@@ -6,8 +6,8 @@ Instala el plugin sdd en Claude Code, prepara un repo si se indica y programa la
 .\setup\install.ps1                        # plugin + actualización diaria a las 08:00
 .\setup\install.ps1 -UpdateAt 09:30        # misma instalación, actualización a las 09:30
 .\setup\install.ps1 -WithLibraries         # además el plugin libraries (skills de librerías)
-.setupinstall.ps1 -Tracker AzureDevOps -Organization miorg   # MCP de Azure DevOps para leer tickets y crear tareas
-.setupinstall.ps1 -Tracker Jira        # MCP remoto de Atlassian (OAuth en el navegador la primera vez)
+.\setup\install.ps1 -Tracker AzureDevOps -Organization miorg   # MCP de Azure DevOps para leer tickets y crear tareas
+.\setup\install.ps1 -Tracker Jira        # MCP remoto de Atlassian (OAuth en el navegador la primera vez)
 .\setup\install.ps1 -NoSchedule            # sin tarea programada
 .\setup\install.ps1 -Repo C:\src\MiRepo    # además AGENTS.md, CLAUDE.md y docs/features en el repo si no los tiene
 .\setup\install.ps1 -RemoveSchedule        # quita la tarea programada y termina
