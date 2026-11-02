@@ -2,6 +2,50 @@
 
 Un PBI real del servicio de registro, desde que llega hasta que el spec lo absorbe, con lo que escribe la persona, lo que hace el agente, qué ficheros cambian, qué tareas aparecen en el gestor y qué modelo se usa en cada fase. El repo de ejemplo es [MassTransit.Saga.Demo](https://github.com/goguiGit/MassTransit.Saga.Demo), cuyo spec está en [`docs/features/registro-usuario/`](../../docs/features/registro-usuario/spec.md); el gestor es Azure DevOps conectado por MCP, y el `sdd.json` del repo es [este](sdd.json).
 
+## Qué decide el agente, y cuándo
+
+Cada vez que alguien escribe `/sdd <id>`, el agente recorre este árbol. No hay que recordar en qué paso se está: lo lee del estado del delta y lo dice.
+
+```mermaid
+flowchart TD
+    START(["/sdd 1234 …"]) --> IDX["Lee INDEX.md y REQ-INDEX.md<br/>y sdd.json (gestor, tareas, modelos)"]
+    IDX --> HAS{"¿Existe el delta<br/>del 1234?"}
+
+    HAS -- no --> REQ{"¿Cambia algún<br/>requisito?"}
+    REQ -- no --> SELF{"¿Solo toca rutas<br/>de selfService?"}
+    SELF -- sí --> L0["Nivel 0 · autoservicio<br/>Implementa con TDD citando el REQ existente.<br/>PR con etiqueta self-service: la revisa cualquiera.<br/>Sin developer."]
+    SELF -- no --> FAST["Vía rápida<br/>Implementa con TDD citando el REQ existente.<br/>PR revisada por un developer."]
+    REQ -- sí --> RISK{"¿Toca contratos, datos,<br/>permisos, pagos<br/>o más de 3 requisitos?"}
+    RISK -- no --> L1["Nivel 1<br/>Escribe el delta (modelo máximo), rama y commit.<br/>Un developer aprueba el delta."]
+    RISK -- sí --> L2["Nivel 2 · riesgo<br/>Escribe el delta igual, avisa de qué developer<br/>debe mirarlo y por qué. Revisión al máximo."]
+    L1 --> STOP1(["Se detiene: status draft"])
+    L2 --> STOP1
+
+    HAS -- sí --> ST{"status"}
+    ST -- draft --> WAIT(["Se detiene: falta aprobar.<br/>Dice qué añade, cambia y quita."])
+    ST -- approved --> TASKS{"createTasks"}
+    TASKS -- true --> MK["Crea una tarea por casilla del plan,<br/>hijas del ticket"]
+    TASKS -- false --> ASK["Pregunta si crear las tareas"]
+    TASKS -- never --> IMPL
+    MK --> IMPL
+    ASK --> IMPL
+    IMPL["Implementa requisito a requisito (modelo medio):<br/>test en rojo → código → commit con (REQ-…)<br/>Cierra la tarea al marcar la casilla"]
+    IMPL --> FAIL{"¿Un requisito falla<br/>sus tests 2 veces?"}
+    FAIL -- sí --> UP["Sube al modelo máximo<br/>para ese requisito y lo dice"] --> IMPL
+    FAIL -- no --> DONE["status implemented<br/>Suite completa en verde"]
+    DONE --> PR(["Siguiente paso: PR<br/>CI: scan + index --check"])
+    ST -- implemented --> MERGE["Fusiona (modelo rápido):<br/>sdd.py merge → spec, historial, archive, índices"]
+    MERGE --> CLOSE{"¿Gestor y<br/>PR mergeada?"}
+    CLOSE -- sí --> TICKET["Copia GIVEN/WHEN/THEN a los criterios<br/>de aceptación y cierra el ticket"]
+    CLOSE -- no --> MANUAL["Dice qué cerrar a mano"]
+```
+
+Tres cosas que el diagrama deja a la vista:
+
+- **Dónde se detiene el agente** (los nodos redondeados): al dejar un delta en `draft` y al encontrarse uno sin aprobar. Entre medias no hay código. Es el gate que hace que una persona decida qué se construye.
+- **Qué necesita un developer y qué no**: solo el nivel 0 prescinde de él, y solo porque no cambia ningún requisito y toca rutas que el equipo abrió a propósito. La vía rápida ahorra el delta, no la revisión.
+- **Qué modelo trabaja en cada tramo**: máximo donde se decide (delta, revisión), medio donde se ejecuta con tests detrás, rápido donde solo se corre un script. Y el único caso en que el agente sube solo: dos fallos seguidos en el mismo requisito.
+
 ## Punto de partida
 
 - PBI **1234** en Azure DevOps, estado *Approved*: "Límite de intentos al confirmar el email. Hoy un código incorrecto no tiene consecuencias; con seis dígitos y 24 h se puede probar por fuerza bruta. Criterio: tras el quinto fallo el registro se descarta y se avisa".

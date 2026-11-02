@@ -244,7 +244,7 @@ Para no editar el JSON a mano hay una segunda skill, `/sdd-models`: `show` ense�
 
 ## Ejemplo completo
 
-[`examples/happy-path/`](examples/happy-path/README.md) narra un PBI de principio a fin sobre el servicio de registro: qué escribe la persona, qué hace el agente en cada paso, qué ficheros cambian, las cuatro tareas que crea en Azure DevOps y las cierra al implementar, el modelo que usa en cada fase y cómo queda todo al fusionar. Incluye las variantes sin gestor, sin cambio de requisitos y con el ticket cambiando a mitad.
+[`examples/happy-path/`](examples/happy-path/README.md) abre con el **árbol de decisiones** que el agente recorre en cada `/sdd` (dónde se detiene, cuándo hace falta un developer, qué modelo trabaja en cada tramo) y narra un PBI de principio a fin sobre el servicio de registro: qué escribe la persona, qué hace el agente en cada paso, qué ficheros cambian, las cuatro tareas que crea en Azure DevOps y las cierra al implementar, el modelo que usa en cada fase y cómo queda todo al fusionar. Incluye las variantes sin gestor, sin cambio de requisitos y con el ticket cambiando a mitad.
 
 ## Varios servicios, una funcionalidad
 
