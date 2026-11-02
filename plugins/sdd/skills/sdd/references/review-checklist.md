@@ -11,3 +11,4 @@ Elige las filas según el diff; no conviertas cada fila en un hallazgo.
 | Datos | Si un requisito toca persistencia: migración o `EnsureCreated` revisado, datos históricos contemplados |
 | Decisiones | Las decisiones del spec siguen siendo ciertas tras el cambio; si no, el delta debe actualizarlas en la fusión |
 | Commits | Cada commit de implementación cita su REQ y lleva `Refs: PBI-<id>` |
+| Diseño | Ninguna señal encendida de [principles.md](principles.md) (responsabilidad única, dependencias hacia dentro, sin duplicar conocimiento, errores explícitos, idempotencia en consumidores); se cita el principio y la señal, no una preferencia de estilo |

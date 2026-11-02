@@ -1,0 +1,6 @@
+{
+  "models": { "change": "opus", "impl": "sonnet", "review": "opus", "merge": "haiku" },
+  "tracker": "None",
+  "createTasks": false,
+  "selfService": []
+}

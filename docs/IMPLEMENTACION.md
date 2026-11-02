@@ -9,6 +9,8 @@ Para quien mantiene este repo o quiere añadirle cosas. El uso está en el [`REA
 - [Instalación y actualización](#instalación-y-actualización)
 - [MCP del gestor de tareas](#mcp-del-gestor-de-tareas)
 - [Versionado](#versionado)
+- [Modelos por fase y `sdd.json`](#modelos-por-fase-y-sddjson)
+- [Niveles de intervención](#niveles-de-intervención)
 - [Añadir una skill de librería](#añadir-una-skill-de-librería)
 - [Añadir un plugin nuevo](#añadir-un-plugin-nuevo)
 - [Estructura](#estructura)
@@ -58,11 +60,11 @@ flowchart LR
 
 ## El plugin `sdd`
 
-`plugins/sdd/skills/sdd/SKILL.md` (~60 líneas) es la única skill. Decide la fase por el `status` del delta: sin delta, lo crea; `draft`, se detiene; `approved`, implementa; `implemented`, fusiona. Lo que necesita leer solo a veces va en `references/`: `format.md` (los dos formatos y qué comprueba el script) y `review-checklist.md` (siete filas para revisar un cambio).
+`plugins/sdd/skills/sdd/SKILL.md` (~60 líneas) es la skill del flujo; la acompaña `skills/sdd-models/SKILL.md`, con un disparador distinto ("configurar modelos") y sin solapamiento, que solo lee y escribe `sdd.json`. Decide la fase por el `status` del delta: sin delta, lo crea; `draft`, se detiene; `approved`, implementa; `implemented`, fusiona. Lo que necesita leer solo a veces va en `references/`: `format.md` (los dos formatos y qué comprueba el script) y `review-checklist.md` (siete filas para revisar un cambio).
 
 Reglas para tocarla:
 
-- Una skill, no una por fase. Si aparece un disparador distinto de verdad (por ejemplo "auditar todos los specs del repo"), ahí sí es otra skill.
+- Una skill para el flujo, no una por fase. Otra skill solo con un disparador distinto de verdad: `sdd-models` lo es (configurar la tabla de modelos); "auditar todos los specs" lo sería; "implementar" no.
 - Sin nombres de herramientas del host en el texto. La única dependencia es `${CLAUDE_PLUGIN_ROOT}`, que Claude Code define al cargar el plugin, para localizar `scripts/sdd.py`.
 - Lo que el script pueda comprobar no se explica en la skill; se le dice que ejecute el script.
 - La descripción del frontmatter es lo que Claude usa para decidir cuándo cargarla: debe contener las frases con las que alguien pediría el trabajo.
@@ -100,7 +102,7 @@ Trampa conocida: el bloque de un requisito va desde su `### REQ-…` hasta el si
 
 1. Comprueban `claude`, `git` y `python`.
 2. `claude plugin marketplace add goguiGit/Sdd-Developer-setup` si no está; `claude plugin install sdd@sdd-developer-setup --scope user` o `update` si ya está.
-3. Con `-Repo` / argumento: copian `templates/AGENTS.md` y `templates/CLAUDE.md` al repo si no existen y crean `docs/features/`.
+3. Con `-Repo` / argumento: copian `templates/AGENTS.md`, `templates/CLAUDE.md` y `templates/sdd.json` al repo si no existen y crean `docs/features/`.
 4. Con `-Tracker` / `TRACKER`: registran el MCP del gestor de tareas a nivel de usuario si no está (ver [MCP del gestor de tareas](#mcp-del-gestor-de-tareas)).
 5. Registran la actualización diaria (hora por `-UpdateAt` / `UPDATE_AT`, 08:00 por defecto): tarea del Programador de tareas en Windows (`StartWhenAvailable`), LaunchAgent `com.sdd.plugin-update` en macOS (`StartCalendarInterval`), línea de `crontab` marcada `# claude-sdd-plugin-update` en Linux. Idempotentes: reemplazan, no duplican. `-RemoveSchedule` / `--remove-schedule` la quitan.
 
@@ -120,6 +122,20 @@ La skill no nombra herramientas concretas del MCP: describe operaciones (leer ti
 ## Versionado
 
 Cada plugin tiene su versión en dos sitios que deben coincidir: `plugins/<plugin>/.claude-plugin/plugin.json` y su entrada en `.claude-plugin/marketplace.json`. Subirla en los dos y hacer merge a `main` es publicar: la tarea diaria de cada developer hace `marketplace update` + `plugin update` y recoge la nueva. Convención: `MAJOR` si cambia el formato de `spec.md` o `delta.md` (los repos tienen que migrar sus docs), `MINOR` si cambia la skill o se añade una skill de librería, `PATCH` para correcciones de texto o del script sin cambio de formato.
+
+## Modelos por fase y `sdd.json`
+
+`plugins/sdd/skills/sdd/references/models.md` es la política: niveles (máximo, medio, rápido) con alias del host, tabla por defecto por fase, criterios de subida y bajada automáticas, y el formato de `sdd.json`. La skill la lee al empezar y aplica el nivel cuando delega una fase a un subagente (implementación, revisión); en la sesión principal solo lo recomienda, porque el modelo de la sesión lo elige quien la abre.
+
+`/sdd-models` (`show`, `recommend`, `set`, `reset`) es la forma de ver y cambiar la tabla sin editar el JSON; `recommend` compara los alias configurados con los que el host ofrece y lo que el historial reciente sugiere, y propone sin cambiar. `sdd.json` (plantilla en `templates/sdd.json`, copiada por el instalador con `-Repo` si no existe) tiene cuatro claves: `selfService` (rutas glob que alguien sin perfil técnico puede cambiar sin developer cuando no hay cambio de requisitos; vacía por defecto), `models` (alias por fase: `change`, `impl`, `review`, `merge`), `tracker` (`AzureDevOps`, `Jira`, `None`) y `createTasks` (`true`, `false`, `"never"`). Lo lee la skill, no el script: `sdd.py` no sabe de modelos ni de gestores, a propósito, para que siga siendo stdlib y determinista.
+
+Por qué alias y no ids: los ids de modelo llevan fecha y caducan; un alias de nivel sigue apuntando al modelo actual cuando el proveedor publica uno nuevo, y cambiar de nivel en todo el equipo es editar una línea del `sdd.json`. Cuando el host añada un nivel nuevo, basta con usar su alias; `models.md` no necesita cambiar.
+
+`examples/happy-path/` es la narración de un PBI completo con esta política aplicada; si cambia el flujo, se actualiza ese ejemplo en el mismo commit.
+
+## Niveles de intervención
+
+La skill clasifica cada petición antes de actuar (sección "Quién pide y cuánta intervención hace falta" de `SKILL.md`): nivel 0 (sin cambio de requisitos y solo rutas `selfService`: sin developer, PR etiquetada `self-service`), nivel 1 (cambio de requisitos: un developer aprueba el delta y revisa) y nivel 2 (contratos, persistencia, autorización, pagos, datos personales o más de tres requisitos: developer en delta y PR, revisión al nivel máximo). Los criterios de nivel 2 son los mismos que suben el modelo al máximo en `models.md`, a propósito: una sola lista de "esto es delicado". Nada se auto-mergea; el CI y una revisión humana siguen siendo el gate. Para cambiar la clasificación, se cambia la tabla de `SKILL.md` y este párrafo, no se añade lógica al script.
 
 ## Añadir una skill de librería
 
@@ -149,11 +165,15 @@ plugins/sdd/
   skills/sdd/references/format.md         ← formato de spec.md y delta.md, y qué comprueba el script
   skills/sdd/references/review-checklist.md
   skills/sdd/references/trackers.md       ← qué hace la skill con Azure DevOps o Jira, y cómo registrar su MCP
+  skills/sdd/references/models.md         ← niveles de modelo por fase, criterios de cambio, formato de sdd.json
+  skills/sdd/references/principles.md     ← principios independientes del lenguaje, con su señal de ruptura
+  skills/sdd-models/SKILL.md              ← ver, recomendar o cambiar la tabla de modelos en sdd.json
   scripts/sdd.py, scripts/tests/          ← lint, check, merge, scan
 plugins/libraries/
   .claude-plugin/plugin.json
   skills/masstransit-saga/SKILL.md        ← modelo de skill de librería
-templates/AGENTS.md, CLAUDE.md            ← para el repo del producto (CLAUDE.md es "@AGENTS.md")
+templates/AGENTS.md, CLAUDE.md, sdd.json  ← para el repo del producto (CLAUDE.md es "@AGENTS.md"; sdd.json: modelos, gestor, tareas)
+examples/happy-path/                      ← un PBI narrado de principio a fin, con tareas y modelo por fase
 docs/features/registro-usuario/           ← ejemplo real y fixture del CI: spec + delta aprobado
 docs/IMPLEMENTACION.md, decisiones.md
 .github/workflows/sdd-checks.yml          ← CI propio y workflow reutilizable

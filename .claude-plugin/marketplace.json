@@ -9,7 +9,7 @@
       "name": "sdd",
       "source": "./plugins/sdd",
       "description": "Spec-Driven Development mínimo: spec.md por feature, delta.md por cambio y una skill /sdd que decide la fase por el estado del delta.",
-      "version": "0.3.0"
+      "version": "0.4.0"
     },
     {
       "name": "libraries",

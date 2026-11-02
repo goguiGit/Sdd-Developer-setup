@@ -71,6 +71,22 @@ THEN <resultado>
 - `status`: `draft` (escrito, sin aprobar), `approved` (se puede implementar), `implemented` (listo para fusionar).
 - La carpeta empieza por el id: `<pbi>-<slug>`.
 
+## Nombres
+
+Valen para cualquier lenguaje; las convenciones del lenguaje (PascalCase, snake_case, sufijos) las pone el `AGENTS.md` del repo.
+
+| Qué | Convención | Ejemplo |
+|---|---|---|
+| Feature | `kebab-case`, el nombre de negocio, sin el nombre del servicio | `registro-usuario`, `aprobacion-vacaciones` |
+| Área de requisito | 2-5 mayúsculas del contexto de negocio, estable aunque el código se reorganice | `REG`, `VAC`, `NOM` |
+| Requisito | `REQ-<AREA>-NNN` más un título de 2-6 palabras en lenguaje de negocio | `REQ-REG-006 Límite de intentos fallidos` |
+| Carpeta del cambio | `<id>-<slug-kebab>` | `1234-limite-intentos` |
+| Rama | `feature/<id>-<slug>` o `bugfix/<id>-<slug>` | `feature/1234-limite-intentos` |
+| Commit | Conventional commit, el requisito entre paréntesis al final, trailer `Refs: PBI-<id>` | `feat: discard the registration after five wrong codes (REQ-REG-006)` |
+| Test | Nombre que cuente el GIVEN/WHEN/THEN y el id en el nombre o en una línea | `FifthWrongCode_DiscardsRegistration` con `// REQ-REG-006` |
+| Mensaje entre servicios | Evento en pasado, comando en imperativo, en inglés como el código | `UserActivated`, `SendWelcomeEmail` |
+| PR | Título corto con el id delante; etiqueta `self-service` si es nivel 0 | `1234 Límite de intentos al confirmar` |
+
 ## Lo que comprueba `sdd.py`
 
 | Comando | Comprueba |

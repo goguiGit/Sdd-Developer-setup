@@ -13,13 +13,17 @@ Marketplace de Claude Code con dos plugins: `sdd` (Spec-Driven Development míni
 
 | Quiero | Toco |
 |---|---|
-| El flujo o las fases | `plugins/sdd/skills/sdd/SKILL.md` (una sola skill; la fase la decide el `status` del delta; no partirla en una skill por fase) |
+| El flujo o las fases | `plugins/sdd/skills/sdd/SKILL.md` (la skill del flujo; la fase la decide el `status` del delta; no partirla en una skill por fase). La única otra skill es `sdd-models`, porque "configurar modelos" es otro disparador; no añadir más sin un disparador nuevo |
 | El formato de `spec.md`/`delta.md` o lo que se valida | `plugins/sdd/scripts/sdd.py` **primero con un test** en `scripts/tests/`, luego `references/format.md`, el ejemplo y sus índices |
 | Qué se hace con Azure DevOps o Jira | `plugins/sdd/skills/sdd/references/trackers.md` y la rama `-Tracker` de los dos instaladores |
 | Cómo se revisa un cambio | `plugins/sdd/skills/sdd/references/review-checklist.md` |
+| Qué modelo en cada fase, `sdd.json` | `plugins/sdd/skills/sdd/references/models.md`, `templates/sdd.json` y la skill `skills/sdd-models/` (única otra skill del plugin: disparador distinto, solo toca `sdd.json`); solo alias de nivel, nunca ids con fecha |
+| Principios de ingeniería independientes del lenguaje | `plugins/sdd/skills/sdd/references/principles.md` (principio + señal de ruptura); las reglas y convenciones de cada lenguaje van al `AGENTS.md` del repo del producto, no aquí |
+| Quién puede pedir, quién aprueba, qué es autoservicio | `README.md` ("Quién hace qué"), la sección "Nivel de intervención" de `SKILL.md` y la clave `selfService` de `sdd.json` |
+| El ejemplo narrado | `examples/happy-path/README.md`; si cambia el flujo, cambia el ejemplo en el mismo commit |
 | Una skill de librería nueva | `plugins/libraries/skills/<area>-<libreria>/SKILL.md` (30-60 líneas, descripción con las frases de uso); modelo: `masstransit-saga`. Nunca reglas SDD ahí |
 | Lo que valida el CI de los consumidores | `.github/workflows/sdd-checks.yml`, job `deltas` (`scan` + `index --check`); `script-tests` solo corre aquí |
-| Lo que recibe un repo nuevo | `templates/AGENTS.md` (real) y `templates/CLAUDE.md` (solo `@AGENTS.md`, así lo leen Claude Code, Codex y Copilot) |
+| Lo que recibe un repo nuevo | `templates/AGENTS.md` (real), `templates/CLAUDE.md` (solo `@AGENTS.md`, así lo leen Claude Code, Codex y Copilot) y `templates/sdd.json` |
 | Instalación o actualización | `setup/install.ps1` / `install.sh` y `setup/update.ps1` / `update.sh` (idempotentes; `.ps1` con BOM UTF-8, `.sh` en LF) |
 
 ## Reglas que no se deducen del código

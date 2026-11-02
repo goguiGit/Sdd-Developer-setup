@@ -16,6 +16,7 @@ Las especificaciones viven en `docs/features/<feature>/spec.md` (requisitos `REQ
 - Skill: `sdd` (`/sdd <id>` decide la fase por el estado del delta). CI: `sdd-checks` valida los deltas abiertos y que los índices estén al día en cada PR.
 - La documentación es parte del cambio: un commit que cambia comportamiento actualiza el delta o el spec, el `README.md` afectado y este fichero si una regla deja de ser cierta. Documentación desactualizada es un bug.
 - Gestor de tareas: <!-- Azure DevOps (organización, proyecto) o Jira (proyecto); MCP registrado con setup/install -Tracker. Qué tipo de work item es un PBI y cuál una tarea. -->
+- `sdd.json` en la raíz fija el gestor, si se crean tareas al implementar y el nivel de modelo por fase (alias `opus` / `sonnet` / `haiku`, nunca ids con fecha).
 
 ## Límites
 

@@ -69,7 +69,7 @@ if ($Tracker -ne 'None') {
 
 if ($Repo) {
     Write-Host "== Repo $Repo" -ForegroundColor Cyan
-    foreach ($name in 'AGENTS.md', 'CLAUDE.md') {
+    foreach ($name in 'AGENTS.md', 'CLAUDE.md', 'sdd.json') {
         if (-not (Test-Path (Join-Path $Repo $name))) {
             Copy-Item (Join-Path $root "templates\$name") (Join-Path $Repo $name)
             Write-Host "   $name copiado"

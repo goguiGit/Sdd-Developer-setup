@@ -4,11 +4,23 @@ description: Trabaja un cambio con Spec-Driven Development según el estado de s
 argument-hint: <id> [descripción corta] [--feature <slug>]
 ---
 
-Un `spec.md` por feature con requisitos `REQ-<AREA>-NNN` en GIVEN/WHEN/THEN; un `delta.md` por cambio. El spec solo cambia por fusión de un delta. Formatos y reglas en [references/format.md](references/format.md); el script que valida y fusiona es `${CLAUDE_PLUGIN_ROOT}/scripts/sdd.py`. Si hay un gestor de tareas conectado por MCP (Azure DevOps, Jira), lo que se hace con él en cada fase está en [references/trackers.md](references/trackers.md).
+Un `spec.md` por feature con requisitos `REQ-<AREA>-NNN` en GIVEN/WHEN/THEN; un `delta.md` por cambio. El spec solo cambia por fusión de un delta. Formatos y reglas en [references/format.md](references/format.md); el script que valida y fusiona es `${CLAUDE_PLUGIN_ROOT}/scripts/sdd.py`. Si hay un gestor de tareas conectado por MCP (Azure DevOps, Jira), lo que se hace con él en cada fase está en [references/trackers.md](references/trackers.md). Qué nivel de modelo conviene en cada fase, y cuándo subir o bajar, en [references/models.md](references/models.md); el repo puede fijarlo en `sdd.json` (`models`, `tracker`, `createTasks`), que se lee antes de empezar, y se cambia con `/sdd-models`.
 
 ## Orientarse sin leerlo todo
 
 Empieza por `docs/features/INDEX.md` (una línea por feature y los deltas abiertos) y `docs/features/REQ-INDEX.md` (todos los requisitos activos con su feature y cuántos tests los nombran); los genera el script, no se editan. Abre solo el `spec.md` que toque. Para seguir un requisito hasta sus deltas, tests y commits: `python ${CLAUDE_PLUGIN_ROOT}/scripts/sdd.py where REQ-<AREA>-NNN`. Si los índices no existen o están viejos (`sdd.py index --check`), regenéralos con `sdd.py index` y añádelos al commit.
+
+## Quién pide y cuánta intervención hace falta
+
+Cualquier persona puede pedir un cambio, también alguien de producto, soporte o negocio sin saber de código. Escribe los requisitos para esa persona: GIVEN/WHEN/THEN en lenguaje de negocio, sin nombres de clases, tablas ni librerías (eso va en el plan, que sí es técnico). Antes de hacer nada, clasifica el cambio y dilo en una línea:
+
+| Nivel | Cuándo | Quién interviene |
+|---|---|---|
+| **0, autoservicio** | No cambia ningún requisito **y** solo toca rutas de `selfService` en `sdd.json` (textos, traducciones, documentación, valores de configuración permitidos) | Nadie de desarrollo: implementas, CI en verde, PR con la etiqueta `self-service` que puede revisar cualquiera del equipo, incluida la persona que lo pidió |
+| **1, cambio de requisitos** | Añade, modifica o quita requisitos sin tocar contratos entre servicios, persistencia ni autorización | Un developer aprueba el delta (diez líneas) y revisa la PR |
+| **2, riesgo** | Toca `Publica:`/`Consume:`, persistencia, autorización, pagos o datos personales, o más de tres requisitos | Developer en el delta y en la PR; revisión con el nivel máximo de modelo; no hay vía rápida |
+
+Si no puedes clasificar con seguridad, es nivel 1. Si alguien sin perfil técnico pide algo de nivel 2, no lo frenes: escribe el delta igual y explica qué developer tiene que mirarlo y por qué.
 
 ## Qué fase toca
 
@@ -17,7 +29,7 @@ Busca `docs/features/*/changes/<id>-*/delta.md` para el id de `$ARGUMENTS` (o el
 | Situación | Haz |
 |---|---|
 | No hay delta y el cambio **añade, modifica o quita algún requisito** | Crear el delta (abajo) |
-| No hay delta y **no cambia ningún requisito** (bug dentro de un REQ, refactor, deuda) | Vía rápida: implementa con TDD y cita el REQ existente en cada commit. Sin delta |
+| No hay delta y **no cambia ningún requisito** (bug dentro de un REQ, refactor, deuda, texto) | Vía rápida: implementa con TDD y cita el REQ existente en cada commit. Sin delta. Si además solo toca rutas de `selfService`, es nivel 0: etiqueta la PR `self-service` y di que no necesita developer |
 | `status: draft` | Para. Di qué añade, cambia y quita, y que para seguir alguien tiene que poner `status: approved` (o mergear la PR del delta, si el equipo aprueba así) |
 | `status: approved` | Implementar (abajo) |
 | `status: implemented` | Fusionar (abajo) |
@@ -35,8 +47,8 @@ Si dudas de si cambia un requisito, lee el `spec.md` de la feature: si la frase 
 ## Implementar
 
 1. `sdd.py check <delta>` en verde; si no, el delta no encaja con el spec y se arregla antes.
-2. Lee el `spec.md` para no romper requisitos vecinos. El spec es de solo lectura en esta fase. Si hay gestor conectado y el usuario quiere, crea una tarea hija por casilla del plan, enlazada al ticket; cierra cada una al marcar su casilla.
-3. Un requisito cada vez, en el orden del plan: test que demuestra el GIVEN/WHEN/THEN con el id en el nombre o en una línea, verlo fallar por el motivo correcto, código mínimo, refactor en verde, commit `feat: <qué> (REQ-AREA-NNN)` con `Refs: PBI-<id>`. `REMOVED`: borra comportamiento y test en su propio commit. `MODIFIED`: primero cambia el test, mira cómo falla, luego el código.
+2. Lee el `spec.md` para no romper requisitos vecinos. El spec es de solo lectura en esta fase. Si hay gestor conectado, crea una tarea hija por casilla del plan, enlazada al ticket, según `createTasks` de `sdd.json` (`true` sin preguntar, `false` preguntando, `"never"` nunca); cierra cada una al marcar su casilla. Implementa con el nivel de modelo de `models.md` (medio por defecto) y sube al máximo si un requisito falla sus tests dos veces; dilo en el resumen.
+3. Un requisito cada vez, en el orden del plan: test que demuestra el GIVEN/WHEN/THEN con el id en el nombre o en una línea, verlo fallar por el motivo correcto, código mínimo, refactor en verde con [references/principles.md](references/principles.md) a mano (las reglas del lenguaje y del repo están en su `AGENTS.md`), commit `feat: <qué> (REQ-AREA-NNN)` con `Refs: PBI-<id>`. `REMOVED`: borra comportamiento y test en su propio commit. `MODIFIED`: primero cambia el test, mira cómo falla, luego el código.
 4. Nada fuera del delta. Si falta un requisito o uno está mal, no lo cueles: propón ampliar el delta (vuelve a `draft`, se cambia, se aprueba).
 5. Al acabar: suite completa en verde; cada REQ de `ADDED`/`MODIFIED` tiene un test que lo nombra y ninguno nombra un `REMOVED` ([review-checklist.md](references/review-checklist.md)); marca el plan, pon `status: implemented` y commit `docs: PBI <id> implementado`. El siguiente paso es la PR.
 

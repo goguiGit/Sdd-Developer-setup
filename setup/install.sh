@@ -101,7 +101,7 @@ esac
 
 if [ -n "$repo" ]; then
   echo "== Repo $repo"
-  for name in AGENTS.md CLAUDE.md; do
+  for name in AGENTS.md CLAUDE.md sdd.json; do
     [ -f "$repo/$name" ] || { cp "$root/templates/$name" "$repo/$name"; echo "   $name copiado"; }
   done
   echo "   rellena los <...> de AGENTS.md"

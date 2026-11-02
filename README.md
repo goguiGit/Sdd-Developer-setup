@@ -5,12 +5,16 @@ Una forma sencilla de trabajar con Claude Code en la que **primero se escribe qu
 Esta guía es para **usarlo**. Si quieres saber cómo está construido o cambiarlo, lee [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
 - [Qué resuelve](#qué-resuelve)
+- [Quién hace qué](#quién-hace-qué)
 - [Instalar en dos minutos](#instalar-en-dos-minutos)
 - [Preparar un repo](#preparar-un-repo)
 - [Conectar el gestor de tareas](#conectar-el-gestor-de-tareas)
 - [Trabajar un cambio, paso a paso](#trabajar-un-cambio-paso-a-paso)
+- [Principios que valen para cualquier lenguaje](#principios-que-valen-para-cualquier-lenguaje)
 - [Cuando no hace falta delta](#cuando-no-hace-falta-delta)
 - [Encontrar lo que ya existe](#encontrar-lo-que-ya-existe)
+- [Elegir el modelo en cada fase](#elegir-el-modelo-en-cada-fase)
+- [Ejemplo completo](#ejemplo-completo)
 - [Varios servicios, una funcionalidad](#varios-servicios-una-funcionalidad)
 - [Proyectos legacy](#proyectos-legacy)
 - [Skills de librerías](#skills-de-librerías)
@@ -35,6 +39,20 @@ flowchart LR
     A -- sí --> I["Código con TDD<br/>un requisito, un commit"]
     I --> PR["PR"] --> M["spec.md actualizado<br/>delta archivado"]
 ```
+
+## Quién hace qué
+
+Cualquier persona puede pedir un cambio: producto, soporte, negocio, QA. No hace falta saber de código, porque el delta se escribe en lenguaje de negocio y el agente clasifica cuánta intervención técnica hace falta, y lo dice antes de empezar:
+
+| Nivel | Qué es | Quién interviene | Ejemplo |
+|---|---|---|---|
+| **0, autoservicio** | No cambia ningún requisito y solo toca lo que el equipo ha abierto en `selfService` (textos, traducciones, documentación, valores de configuración acotados) | Nadie de desarrollo. El agente implementa, el CI pasa, y la PR, etiquetada `self-service`, la revisa cualquiera del equipo | Producto cambia el texto del correo de bienvenida |
+| **1, cambio de requisitos** | Añade, modifica o quita requisitos, sin tocar contratos, datos ni permisos | Un developer aprueba el delta (diez líneas, cinco minutos) y revisa la PR; el agente hace el resto | Producto pide limitar los intentos de confirmación |
+| **2, riesgo** | Toca mensajes entre servicios, persistencia, autorización, pagos o datos personales, o muchos requisitos a la vez | Developer en el delta y en la PR, revisión con el nivel máximo de modelo | Cambiar qué evento se publica al activar un usuario |
+
+Lo que no cambia nunca: nada llega a `main` sin una PR que pase el CI y que una persona revise. El autoservicio ahorra el tiempo del developer en lo que no lo necesita; no quita la revisión, cambia quién la hace. Las rutas de autoservicio las decide cada equipo en `sdd.json` y están vacías por defecto.
+
+El texto de los requisitos está pensado para que lo lea quien lo pidió: GIVEN/WHEN/THEN en lenguaje de negocio, sin nombres de clases ni tablas. Lo técnico va en el plan, que es para el agente y el developer.
 
 ## Instalar en dos minutos
 
@@ -156,9 +174,13 @@ El agente fusiona el delta en `spec.md` (REQ-REG-006 aparece, REQ-REG-003 queda 
 
 En resumen: `/sdd <id>` siempre hace lo que toca según el estado del delta. No hay que recordar más comandos.
 
+## Principios que valen para cualquier lenguaje
+
+Cada repo tiene las reglas de su lenguaje en su `AGENTS.md` (formato, convenciones de nombres del lenguaje, librerías); las convenciones del flujo (cómo se llaman features, requisitos, ramas, commits, tests y mensajes) están en la sección "Nombres" de [`format.md`](plugins/sdd/skills/sdd/references/format.md#nombres) y valen para todos los repos. Lo que el flujo exige igual en C#, TypeScript, Python o SQL está en [`principles.md`](plugins/sdd/skills/sdd/references/principles.md): SOLID, lo mínimo que cumple el requisito, sin duplicar conocimiento, errores explícitos, límites claros entre capas y servicios, nombres que hacen innecesario el comentario, tests que prueban el requisito e idempotencia en los consumidores de mensajes. Cada principio va con la **señal** de que se está rompiendo, para que el revisor cite el principio y no una preferencia. El agente lo tiene a mano al refactorizar en verde y el revisor en la fila "Diseño" del checklist.
+
 ## Cuando no hace falta delta
 
-Si el cambio **no añade, modifica ni quita ningún requisito** (un bug dentro de un comportamiento ya descrito, un refactor, deuda técnica), no hay delta: el agente implementa con TDD y cita el requisito existente en el commit. La prueba es sencilla: si después del cambio todas las frases `GIVEN / WHEN / THEN` del spec siguen siendo ciertas y no hace falta ninguna nueva, no es un delta.
+Si el cambio **no añade, modifica ni quita ningún requisito** (un bug dentro de un comportamiento ya descrito, un refactor, deuda técnica, un texto), no hay delta: el agente implementa con TDD y cita el requisito existente en el commit. Si además solo toca rutas de `selfService`, es nivel 0 y no necesita developer. La prueba es sencilla: si después del cambio todas las frases `GIVEN / WHEN / THEN` del spec siguen siendo ciertas y no hace falta ninguna nueva, no es un delta.
 
 ## Encontrar lo que ya existe
 
@@ -179,6 +201,37 @@ python plugins/sdd/scripts/sdd.py where REQ-REG-003
 devuelve su texto en el spec, los deltas que lo tocaron (abiertos y archivados), los ficheros de código y tests que lo nombran y los commits que lo citan. Es la trazabilidad completa en una pantalla, sin herramientas externas: la dan los ids estables y la convención de ponerlos en tests y commits.
 
 ¿Y un grafo de conocimiento (Graphify y similares)? Lo evaluaremos cuando aparezcan preguntas que los índices y `where` no respondan bien, como "si cambio este requisito, qué servicios se ven afectados" a través de muchos repos; el criterio está en [`docs/decisiones.md`](docs/decisiones.md).
+
+## Elegir el modelo en cada fase
+
+Los modelos cambian de nombre y de capacidad cada pocos meses, así que el flujo habla de **niveles**, no de modelos: máximo, medio y rápido, con los alias que Claude Code resuelve siempre al modelo actual de cada nivel (`opus`, `sonnet`, `haiku`). Nunca un id con fecha.
+
+| Fase | Nivel por defecto | Por qué |
+|---|---|---|
+| Escribir el delta | Máximo | Es donde se decide qué se construye |
+| Implementar | Medio | Trabajo acotado por un delta aprobado y por tests |
+| Revisar | Máximo | Hay que encontrar lo que falta |
+| Fusionar, índices, cerrar el ticket | Rápido | Es ejecutar el script y leer su salida |
+
+El agente aplica la tabla cuando delega una fase y **sube o baja de nivel por su cuenta** con criterios escritos: sube al máximo si el delta toca más de tres requisitos, un contrato entre servicios, persistencia o autorización, o si un requisito falla sus tests dos veces seguidas; baja al rápido en documentación, índices y cambios triviales. Siempre dice en el resumen qué nivel usó y por qué, para que el equipo pueda corregir la tabla.
+
+El equipo lo ajusta con un `sdd.json` en la raíz del repo (plantilla en `templates/sdd.json`):
+
+```json
+{
+  "models": { "change": "opus", "impl": "sonnet", "review": "opus", "merge": "haiku" },
+  "tracker": "AzureDevOps",
+  "createTasks": true
+}
+```
+
+`createTasks` decide si al pasar a implementar se crean las tareas hijas del plan en el gestor sin preguntar (`true`), preguntando (`false`) o nunca (`"never"`). Detalle y criterios en [`models.md`](plugins/sdd/skills/sdd/references/models.md).
+
+Para no editar el JSON a mano hay una segunda skill, `/sdd-models`: `show` enseña la tabla actual, `recommend` compara los alias del fichero con los modelos que ofrece Claude Code hoy y propone cambios (un alias que ya no existe, un nivel nuevo que encaja mejor, una fase que viene fallando), `set impl sonnet` cambia una fase y hace su commit, `reset` vuelve a los valores por defecto. Cuando salga una generación nueva de modelos, `/sdd-models recommend` es el único paso.
+
+## Ejemplo completo
+
+[`examples/happy-path/`](examples/happy-path/README.md) narra un PBI de principio a fin sobre el servicio de registro: qué escribe la persona, qué hace el agente en cada paso, qué ficheros cambian, las cuatro tareas que crea en Azure DevOps y las cierra al implementar, el modelo que usa en cada fase y cómo queda todo al fusionar. Incluye las variantes sin gestor, sin cambio de requisitos y con el ticket cambiando a mitad.
 
 ## Varios servicios, una funcionalidad
 
