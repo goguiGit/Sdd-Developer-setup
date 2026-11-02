@@ -1,12 +1,13 @@
 ﻿<#
 .SYNOPSIS
-Actualiza el marketplace y el plugin sdd. Es lo que ejecuta la tarea programada; también se puede lanzar a mano.
+Actualiza el marketplace y todos los plugins instalados desde él. Es lo que ejecuta la tarea programada; también se puede lanzar a mano.
 Escribe un log en ~/.claude/sdd-update.log y sale con 1 si Claude Code devolvió un fallo.
 #>
 [CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Continue'
+$marketplace = 'sdd-developer-setup'
 $log = Join-Path $HOME '.claude\sdd-update.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 
@@ -23,7 +24,11 @@ function Run([string] $Label, [string[]] $Arguments) {
 }
 
 Log 'update: inicio'
-$ok = Run 'marketplace' @('plugin', 'marketplace', 'update', 'sdd-developer-setup')
-$ok = (Run 'plugin' @('plugin', 'update', 'sdd@sdd-developer-setup')) -and $ok
-Log ('update: ' + ($(if ($ok) { 'ok' } else { 'con fallos' })))
+$ok = Run 'marketplace' @('plugin', 'marketplace', 'update', $marketplace)
+$installed = (claude plugin list 2>&1 | Out-String) -split "`n" | ForEach-Object { if ($_ -match "([\w-]+)@$marketplace") { $Matches[1] } } | Sort-Object -Unique
+if (-not $installed) { Log "plugins: ninguno instalado desde $marketplace" }
+foreach ($plugin in $installed) {
+    $ok = (Run "plugin $plugin" @('plugin', 'update', "$plugin@$marketplace")) -and $ok
+}
+Log ('update: ' + $(if ($ok) { 'ok' } else { 'con fallos' }))
 exit $(if ($ok) { 0 } else { 1 })

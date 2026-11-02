@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Instala el plugin sdd en Claude Code, deja las plantillas donde hacen falta y programa la actualización diaria. Idempotente.
-#   ./setup/install.sh                      # plugin + CLAUDE.md global + actualización diaria a las 08:00
+# Instala el plugin sdd en Claude Code, prepara un repo si se indica y programa la actualización diaria. Idempotente.
+#   ./setup/install.sh                      # plugin + actualización diaria a las 08:00
 #   UPDATE_AT=09:30 ./setup/install.sh      # actualización a las 09:30
+#   WITH_LIBRARIES=1 ./setup/install.sh     # además el plugin libraries (skills de librerías)
+#   TRACKER=AzureDevOps ADO_ORG=miorg ./setup/install.sh   # MCP de Azure DevOps para leer tickets y crear tareas
+#   TRACKER=Jira ./setup/install.sh         # MCP remoto de Atlassian (OAuth en el navegador la primera vez)
 #   NO_SCHEDULE=1 ./setup/install.sh        # sin tarea programada
-#   ./setup/install.sh ~/src/mi-repo        # además copia CLAUDE.md y docs/features al repo si no los tiene
+#   ./setup/install.sh ~/src/mi-repo        # además AGENTS.md, CLAUDE.md y docs/features en el repo si no los tiene
 #   ./setup/install.sh --remove-schedule    # quita la tarea programada y termina
 # macOS: LaunchAgent (~/Library/LaunchAgents/com.sdd.plugin-update.plist); si el Mac dormía a esa hora, corre al despertar.
 # Linux: línea de crontab marcada con "# claude-sdd-plugin-update".
@@ -11,6 +14,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 marketplace="${MARKETPLACE:-goguiGit/Sdd-Developer-setup}"
+marketplace_name="sdd-developer-setup"
 update_at="${UPDATE_AT:-08:00}"
 marker="# claude-sdd-plugin-update"
 label="com.sdd.plugin-update"
@@ -26,6 +30,11 @@ remove_schedule() {
     (crontab -l 2>/dev/null | grep -v "$marker" || true) | crontab -
     echo "Cron de actualización eliminado."
   fi
+}
+
+install_plugin() {
+  if claude plugin list 2>&1 | grep -q "$1@$marketplace_name"; then claude plugin update "$1@$marketplace_name"
+  else claude plugin install "$1@$marketplace_name" --scope user; fi
 }
 
 schedule() {
@@ -71,28 +80,32 @@ for tool in claude git python3; do
   command -v "$tool" >/dev/null || { echo "Falta '$tool' en el PATH."; exit 1; }
 done
 
-echo "== Plugin sdd"
-if ! claude plugin marketplace list 2>&1 | grep -q sdd-developer-setup; then
-  claude plugin marketplace add "$marketplace"
-fi
-if claude plugin list 2>&1 | grep -q 'sdd@sdd-developer-setup'; then
-  claude plugin update sdd@sdd-developer-setup
-else
-  claude plugin install sdd@sdd-developer-setup --scope user
-fi
+echo "== Marketplace y plugins"
+claude plugin marketplace list 2>&1 | grep -q "$marketplace_name" || claude plugin marketplace add "$marketplace"
+install_plugin sdd
+[ -n "${WITH_LIBRARIES:-}" ] && install_plugin libraries
 
-global_claude="$HOME/.claude/CLAUDE.md"
-if [ ! -f "$global_claude" ]; then
-  echo "== CLAUDE.md global"
-  mkdir -p "$(dirname "$global_claude")"
-  cp "$root/templates/CLAUDE.md" "$global_claude"
-  echo "   creado $global_claude; edítalo con lo tuyo"
-fi
+case "${TRACKER:-None}" in
+  AzureDevOps)
+    echo "== Gestor de tareas: Azure DevOps"
+    [ -n "${ADO_ORG:-}" ] || { echo "TRACKER=AzureDevOps necesita ADO_ORG=<nombre de la organización>"; exit 1; }
+    if claude mcp list 2>&1 | grep -q azure-devops; then echo "   azure-devops ya registrado"
+    else claude mcp add --scope user azure-devops -- npx -y @azure-devops/mcp "$ADO_ORG"; fi ;;
+  Jira)
+    echo "== Gestor de tareas: Jira"
+    if claude mcp list 2>&1 | grep -q atlassian; then echo "   atlassian ya registrado"
+    else claude mcp add --transport sse --scope user atlassian https://mcp.atlassian.com/v1/sse; fi ;;
+  None) ;;
+  *) echo "TRACKER debe ser AzureDevOps o Jira"; exit 1 ;;
+esac
 
 if [ -n "$repo" ]; then
   echo "== Repo $repo"
-  [ -f "$repo/CLAUDE.md" ] || { cp "$root/templates/CLAUDE.md" "$repo/CLAUDE.md"; echo '   CLAUDE.md copiado: rellena los <...>'; }
-  [ -d "$repo/docs/features" ] || { mkdir -p "$repo/docs/features"; echo "   creado $repo/docs/features; la primera feature la crea /sdd-change"; }
+  for name in AGENTS.md CLAUDE.md; do
+    [ -f "$repo/$name" ] || { cp "$root/templates/$name" "$repo/$name"; echo "   $name copiado"; }
+  done
+  echo "   rellena los <...> de AGENTS.md"
+  [ -d "$repo/docs/features" ] || { mkdir -p "$repo/docs/features"; echo "   creado $repo/docs/features; la primera feature la crea /sdd"; }
 fi
 
 if [ -z "${NO_SCHEDULE:-}" ]; then
@@ -101,4 +114,4 @@ if [ -z "${NO_SCHEDULE:-}" ]; then
 fi
 
 echo
-echo "Listo. En una sesión de Claude Code dentro del repo: /sdd-change <id> <descripción>"
+echo "Listo. En una sesión de Claude Code dentro del repo: /sdd <id> <descripción>"

@@ -2,13 +2,19 @@
   "name": "sdd-developer-setup",
   "owner": { "name": "Rodrigo Valdez" },
   "metadata": {
-    "description": "Marketplace con el plugin sdd: flujo Spec-Driven Development mínimo para Claude Code."
+    "description": "Marketplace con el plugin sdd (Spec-Driven Development mínimo para Claude Code) y el plugin libraries (skills de uso de librerías)."
   },
   "plugins": [
     {
       "name": "sdd",
       "source": "./plugins/sdd",
-      "description": "Spec-Driven Development mínimo: spec.md por feature, delta.md por cambio, /sdd-change, /sdd-impl y /sdd-merge.",
+      "description": "Spec-Driven Development mínimo: spec.md por feature, delta.md por cambio y una skill /sdd que decide la fase por el estado del delta.",
+      "version": "0.2.0"
+    },
+    {
+      "name": "libraries",
+      "source": "./plugins/libraries",
+      "description": "Skills de uso de librerías, una por librería. Instalación opcional.",
       "version": "0.1.0"
     }
   ]

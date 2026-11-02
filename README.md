@@ -1,165 +1,67 @@
 # Sdd-Developer-setup
 
-Spec-Driven Development **mínimo** para equipos que trabajan con Claude Code: un `spec.md` por feature, un `delta.md` por cambio, tres skills y un script de 300 líneas que valida y fusiona. Nace de analizar un setup corporativo con 8 skills de SDD, 7 artefactos por cambio y 12.000 líneas de instalador, y quedarse solo con lo que aporta: requisitos con id estable, el delta como unidad de revisión antes del código, y un check determinista en CI.
+Una forma sencilla de trabajar con Claude Code en la que **primero se escribe qué va a cambiar y después el código**. Cada funcionalidad tiene una hoja de requisitos (`spec.md`); cada cambio, una nota con lo que añade, modifica o quita (`delta.md`); alguien la aprueba, y solo entonces se programa. Un comando, `/sdd`, lleva el cambio de principio a fin.
 
-- [Cómo encajan las piezas](#cómo-encajan-las-piezas)
-- [El ciclo, en cuatro pasos](#el-ciclo-en-cuatro-pasos)
-- [Formato de los ficheros](#formato-de-los-ficheros)
-- [Las tres skills](#las-tres-skills)
-- [El script](#el-script)
-- [CI](#ci)
-- [Instalación](#instalación)
-- [Ejemplo incluido](#ejemplo-incluido)
-- [Qué se deja fuera a propósito](#qué-se-deja-fuera-a-propósito)
-- [Estructura del repo](#estructura-del-repo)
+Esta guía es para **usarlo**. Si quieres saber cómo está construido o cambiarlo, lee [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
-## Cómo encajan las piezas
+- [Qué resuelve](#qué-resuelve)
+- [Instalar en dos minutos](#instalar-en-dos-minutos)
+- [Preparar un repo](#preparar-un-repo)
+- [Conectar el gestor de tareas](#conectar-el-gestor-de-tareas)
+- [Trabajar un cambio, paso a paso](#trabajar-un-cambio-paso-a-paso)
+- [Cuando no hace falta delta](#cuando-no-hace-falta-delta)
+- [Varios servicios, una funcionalidad](#varios-servicios-una-funcionalidad)
+- [Proyectos legacy](#proyectos-legacy)
+- [Skills de librerías](#skills-de-librerías)
+- [Preguntas frecuentes](#preguntas-frecuentes)
+
+## Qué resuelve
+
+Sin esto, el agente recibe "implementa el PBI 1234" y empieza a escribir código con lo que entiende del ticket. Lo que se pide, lo que entiende y lo que acaba en el código se parecen, pero nadie lo ha comprobado antes de gastar el tiempo.
+
+Con esto:
+
+1. **El agente escribe primero el delta**: tres listas (requisitos que añade, que cambia, que quita), cada requisito en una frase `GIVEN / WHEN / THEN` que se puede convertir en un test.
+2. **Una persona lo lee y lo aprueba.** Son diez líneas, no un diff de treinta ficheros.
+3. **El agente implementa solo eso**, requisito a requisito, con el test antes que el código y el id del requisito en cada commit.
+4. **Al cerrar, el spec de la funcionalidad absorbe el delta.** El spec describe siempre lo que hay en `main`; el historial dice quién cambió qué y cuándo.
 
 ```mermaid
 flowchart LR
-    subgraph dev["Máquina del developer"]
-        CC["Claude Code"]
-        PL["plugin sdd<br/>/sdd-change · /sdd-impl · /sdd-merge"]
-        SC["sdd.py<br/>lint · check · merge · scan"]
-        CC --> PL
-        PL --> SC
-    end
-
-    subgraph repo["Repo del producto"]
-        SPEC["docs/features/&lt;feature&gt;/spec.md<br/>REQ-AREA-NNN en GIVEN/WHEN/THEN"]
-        DELTA["changes/&lt;id&gt;-&lt;slug&gt;/delta.md<br/>ADDED · MODIFIED · REMOVED · Plan"]
-        CODE["Código y tests<br/>commits con (REQ-…) y Refs: PBI-id"]
-        ARCH["changes/archive/&lt;fecha&gt;-&lt;id&gt;-&lt;slug&gt;/"]
-    end
-
-    subgraph ci["GitHub Actions"]
-        WF["sdd-checks.yml<br/>scan de los deltas abiertos"]
-    end
-
-    ADO["Azure DevOps<br/>work item"] -. "título, criterios" .-> PL
-    PL -- "/sdd-change escribe" --> DELTA
-    DELTA -- "una persona pone<br/>status: approved" --> DELTA
-    PL -- "/sdd-impl implementa<br/>con TDD, spec solo lectura" --> CODE
-    SC -- "/sdd-merge fusiona" --> SPEC
-    SC -- "y archiva" --> ARCH
-    DELTA -. "PR" .-> WF
-    SPEC -. "PR" .-> WF
-    SC -. "mismo script,<br/>descargado del repo" .-> WF
+    T["Ticket<br/>(Azure DevOps o una frase)"] --> D["delta.md<br/>qué añade, cambia, quita"]
+    D --> A{"¿Aprobado?"}
+    A -- no --> D
+    A -- sí --> I["Código con TDD<br/>un requisito, un commit"]
+    I --> PR["PR"] --> M["spec.md actualizado<br/>delta archivado"]
 ```
 
-Tres piezas y una relación entre ellas:
+## Instalar en dos minutos
 
-| Pieza | Dónde vive | Qué hace |
-|---|---|---|
-| **Los ficheros** (`spec.md`, `delta.md`) | En el repo del producto, bajo `docs/features/` | Son la fuente de verdad. El spec solo lo escribe la fusión; el delta es lo que una persona revisa y aprueba |
-| **El plugin** (tres skills + el script) | En la máquina del developer, instalado desde este repo como marketplace de Claude Code | Enseña a Claude a crear el delta, a implementarlo con TDD sin salirse de él y a fusionarlo al cerrar |
-| **El workflow** (`sdd-checks.yml`) | En este repo, reutilizable desde cualquier otro con `uses:` | Ejecuta el mismo script contra los deltas abiertos de la PR: formato y que encajan con el spec |
+Necesitas Claude Code, git y Python 3.
 
-Nada se sincroniza entre repos: el plugin se actualiza con `claude plugin update`, el workflow se referencia por `uses:`, y el único fichero que viaja a cada repo es su propio `docs/`.
-
-## El ciclo, en cuatro pasos
-
-```mermaid
-sequenceDiagram
-    participant D as Developer
-    participant C as Claude Code (plugin sdd)
-    participant R as Repo (docs/ + código)
-    participant P as Revisor
-    participant CI as sdd-checks
-
-    D->>C: /sdd-change 1234 "límite de intentos"
-    C->>R: lee spec.md, escribe changes/1234-…/delta.md (draft), rama feature/1234-…
-    C->>C: sdd.py lint + check
-    D->>P: revisa el delta
-    P->>R: status: approved (edición o PR del delta)
-    D->>C: /sdd-impl 1234
-    C->>R: por cada REQ: test en rojo → código → commit "feat: … (REQ-REG-006)"
-    C->>R: status: implemented
-    D->>CI: PR
-    CI->>CI: sdd.py scan docs
-    CI-->>D: verde (o qué REQ no encaja)
-    D->>C: /sdd-merge 1234 (tras el merge)
-    C->>R: spec.md absorbe el delta, carpeta a changes/archive/
+```powershell
+git clone https://github.com/goguiGit/Sdd-Developer-setup
+.\Sdd-Developer-setup\setup\install.ps1
 ```
 
-1. **Delta** (`/sdd-change`): a partir del work item o de una descripción, Claude escribe qué requisitos se añaden, cambian o quitan, en GIVEN/WHEN/THEN, y un plan de tests. Queda en `draft`.
-2. **Aprobación**: una persona lee el delta, no el código, y pone `status: approved`. Si el equipo quiere la aprobación auditable, el delta va en su propia PR pequeña y CODEOWNERS decide quién puede aprobarla.
-3. **Implementación** (`/sdd-impl`): solo con el delta aprobado. Un requisito cada vez, test primero, el id del requisito en el commit. El spec es de solo lectura; si falta algo, se vuelve al delta.
-4. **Fusión** (`/sdd-merge`): tras mergear la PR, el spec absorbe el delta, se añade la fila al historial y la carpeta del cambio se archiva. El spec siempre describe lo que hay en `main`.
-
-## Formato de los ficheros
-
-`docs/features/<feature>/spec.md`:
-
-```markdown
----
-feature: registro-usuario
-title: Registro de usuario con confirmación de email
----
-# Registro de usuario con confirmación de email
-
-## Requisitos
-
-### REQ-REG-001 Alta pendiente de confirmación
-GIVEN un correo con formato válido que no está registrado
-WHEN la persona se registra
-THEN existe un usuario en estado pendiente y se le envía un código
-
-## Decisiones
-
-- <decisión y su porqué>
-
-## Historial
-
-| Fecha | PBI | Cambio |
-|---|---|---|
-| 2026-10-30 | 1000 | Spec inicial |
+```bash
+git clone https://github.com/goguiGit/Sdd-Developer-setup
+./Sdd-Developer-setup/setup/install.sh
 ```
 
-`docs/features/<feature>/changes/<id>-<slug>/delta.md`:
+Esto instala el plugin `sdd` en tu Claude Code y deja programada una **actualización diaria a las 08:00** para que siempre tengas la última versión (cambia la hora con `-UpdateAt 09:30` o `UPDATE_AT=09:30`; quítala con `-RemoveSchedule` o `--remove-schedule`). No hace falta volver a ejecutarlo.
 
-```markdown
----
-pbi: 1234
-title: Límite de intentos de confirmación
-feature: registro-usuario
-status: draft | approved | implemented
----
-## Por qué
-## ADDED        ← requisitos nuevos, con el siguiente número libre del área
-## MODIFIED     ← texto completo del requisito tal y como queda
-## REMOVED      ← lista "- REQ-REG-003"
-## Plan         ← los tests que se escriben primero
+Comprueba que funciona: abre Claude Code en cualquier carpeta y escribe `/sdd`. Debe reconocer el comando.
+
+## Preparar un repo
+
+Una vez por repositorio:
+
+```powershell
+.\Sdd-Developer-setup\setup\install.ps1 -Repo C:\src\MiServicio
 ```
 
-Reglas que el script comprueba: frontmatter completo, `status` válido, carpeta `<pbi>-<slug>`, las tres secciones presentes, ids `REQ-<AREA>-NNN`, y que `MODIFIED`/`REMOVED` existan en el spec y `ADDED` no.
-
-## Las tres skills
-
-| Skill | Cuándo | Qué hace | Qué no hace |
-|---|---|---|---|
-| `/sdd-change <id> <descripción>` | Al empezar un PBI o bug | Lee el work item si hay acceso, elige o crea la feature, escribe el delta en `draft`, valida, crea la rama y hace el commit del delta | No escribe código |
-| `/sdd-impl [<id>]` | Con el delta en `approved` | TDD requisito a requisito, commits con el REQ, marca el plan, pasa el delta a `implemented` | No toca `spec.md`; no implementa nada fuera del delta |
-| `/sdd-merge [<id>]` | Tras mergear la PR | Ejecuta `sdd.py merge`, revisa el spec resultante, commit; opcionalmente cierra el work item | No fusiona un `draft` |
-
-Son tres ficheros `SKILL.md` de 30 a 40 líneas cada uno. No dependen de otras skills ni de agentes.
-
-## El script
-
-`plugins/sdd/scripts/sdd.py`, Python 3 sin dependencias, con tests (`python -I -m unittest discover -s plugins/sdd/scripts/tests`):
-
-| Comando | Qué hace |
-|---|---|
-| `sdd.py lint <delta.md>` | Formato del delta |
-| `sdd.py check <delta.md>` | Que el delta encaja con `spec.md` (dos carpetas arriba) |
-| `sdd.py merge <delta.md> [--date YYYY-MM-DD]` | Aplica el delta al spec, añade el historial y archiva la carpeta. Se niega con un `draft` |
-| `sdd.py scan [docs]` | `lint` + `check` de todos los deltas abiertos; `archive/` se ignora. Es lo que corre CI |
-
-Sale con 1 si hay problemas y los lista en español, uno por línea, con la ruta del delta.
-
-## CI
-
-En el repo del producto, `.github/workflows/sdd-checks.yml`:
+Deja en el repo `AGENTS.md` (orientación para el agente: qué es el sistema, límites, cómo verificar; rellena los `<...>`), `CLAUDE.md` (una línea que importa el anterior) y la carpeta `docs/features/`. Añade el check de CI copiando esto en `.github/workflows/sdd-checks.yml`:
 
 ```yaml
 name: sdd-checks
@@ -167,80 +69,136 @@ on: [pull_request]
 jobs:
   sdd:
     uses: goguiGit/Sdd-Developer-setup/.github/workflows/sdd-checks.yml@main
-    with:
-      docs_root: docs     # opcional
-      enforce: true       # false = solo avisa
 ```
 
-El workflow reutilizable hace checkout del repo llamador y de este, y ejecuta `sdd.py scan`. Como este repo es público, no hace falta copiar el script en cada repo ni vigilar que la copia no se desvíe. Con `enforce: true` la PR falla si un delta abierto tiene mal formato o no encaja con su spec; es el ajuste recomendado desde el primer día, porque un aviso que no bloquea no cambia hábitos.
+Desde ese momento, una PR con un delta mal formado o que no encaja con su spec falla. Una PR sin delta pasa.
 
-## Instalación
+## Conectar el gestor de tareas
 
-Requisitos: Claude Code, git y Python 3.
+Opcional, pero es lo que permite que el agente **lea el ticket**, **cree las tareas** del plan y **cierre el ticket** al fusionar. Se hace una vez por máquina, registrando el MCP correspondiente en Claude Code:
 
-```powershell
-git clone https://github.com/goguiGit/Sdd-Developer-setup
-.\Sdd-Developer-setup\setup\install.ps1                      # plugin + CLAUDE.md global si no existe
-.\Sdd-Developer-setup\setup\install.ps1 -Repo C:\src\MiRepo  # además CLAUDE.md y docs/features en el repo
-```
-
-```bash
-./Sdd-Developer-setup/setup/install.sh [~/src/mi-repo]
-```
-
-El instalador hace tres cosas: registra el marketplace e instala el plugin (`claude plugin marketplace add goguiGit/Sdd-Developer-setup`, `claude plugin install sdd@sdd-developer-setup`), copia `templates/CLAUDE.md` donde no exista, y **programa la actualización diaria**. No hay recibo, ni worktree, ni hooks de deriva: la versión la lleva el gestor de plugins.
-
-### Actualización automática
-
-Para que todos los developers tengan siempre la última versión, el instalador deja una tarea que cada día ejecuta `setup/update.ps1` (o `update.sh`): `claude plugin marketplace update` seguido de `claude plugin update`, con log en `~/.claude/sdd-update.log`. La hora es configurable; por defecto, las 08:00.
-
-| | Windows | macOS y Linux |
+| Gestor | Comando | Qué necesita |
 |---|---|---|
-| Mecanismo | Tarea del Programador de tareas `Claude sdd plugin update` (`StartWhenAvailable`: si el equipo estaba apagado, corre al encenderlo) | macOS: LaunchAgent `~/Library/LaunchAgents/com.sdd.plugin-update.plist` (`StartCalendarInterval`: si el Mac dormía, corre al despertar). Linux: línea de `crontab` marcada `# claude-sdd-plugin-update` |
-| Cambiar la hora | `.\setup\install.ps1 -UpdateAt 09:30` | `UPDATE_AT=09:30 ./setup/install.sh` |
-| Instalar sin tarea | `-NoSchedule` | `NO_SCHEDULE=1 ./setup/install.sh` |
-| Quitar la tarea | `.\setup\install.ps1 -RemoveSchedule` | `./setup/install.sh --remove-schedule` |
-| Actualizar a mano | `.\setup\update.ps1` | `./setup/update.sh` |
+| Azure DevOps | `.\setup\install.ps1 -Tracker AzureDevOps -Organization miorg` (o `claude mcp add --scope user azure-devops -- npx -y @azure-devops/mcp miorg`) | Sesión de `az login` con acceso a la organización |
+| Jira | `.\setup\install.ps1 -Tracker Jira` (o `claude mcp add --transport sse --scope user atlassian https://mcp.atlassian.com/v1/sse`) | Inicia sesión en el navegador la primera vez que Claude lo usa |
 
-La tarea solo ejecuta los dos comandos de `claude plugin`. En macOS y Linux el `PATH` del momento de instalar queda grabado en la tarea (launchd y cron arrancan con un PATH mínimo); si `claude` se mueve de sitio, vuelve a ejecutar el instalador. Si Claude Code no está en ese PATH a esa hora, el log lo dirá y basta con lanzar el update a mano.
+Qué hace el agente con el gestor en cada fase:
 
-## Ejemplo incluido
+- **Al crear el delta**: lee título, descripción y criterios de aceptación del ticket, lo pasa a "en curso" y se lo asigna.
+- **Al empezar a implementar** (delta aprobado): si se lo pides, crea una tarea hija por cada casilla del plan, enlazada al ticket, y las va cerrando al completar cada una. Nunca antes de la aprobación: un delta en borrador puede cambiar entero.
+- **Al fusionar**: copia los `GIVEN / WHEN / THEN` a los criterios de aceptación del ticket y lo cierra, si se lo pides y la PR ya está mergeada.
 
-`docs/features/registro-usuario/` es el registro con confirmación de email de [MassTransit.Saga.Demo](https://github.com/goguiGit/MassTransit.Saga.Demo): un `spec.md` con cinco requisitos y un delta aprobado (`changes/1234-limite-intentos/`) que añade el límite de intentos fallidos y modifica el requisito del código incorrecto. Sirve para probar el ciclo sin inventar nada:
+Sin gestor conectado todo sigue funcionando: el agente te pregunta lo imprescindible y te dice qué cerrar a mano. Avisar por Teams o Slack no forma parte del flujo; si quieres un aviso, se lo pides explícitamente con el MCP que tengas. Detalle en [`trackers.md`](plugins/sdd/skills/sdd/references/trackers.md).
 
-```bash
-python -I plugins/sdd/scripts/sdd.py scan docs                                                     # ok
-python -I plugins/sdd/scripts/sdd.py merge docs/features/registro-usuario/changes/1234-limite-intentos/delta.md
-git diff docs/                                                                                     # el spec con REQ-REG-006 y el delta archivado
-git checkout docs/ && git clean -fd docs/                                                          # deshacer la prueba
-```
+## Trabajar un cambio, paso a paso
 
-## Qué se deja fuera a propósito
+Supongamos el PBI 1234, "límite de intentos al confirmar el email", en el servicio de registro.
 
-| Fuera | Por qué |
-|---|---|
-| `mission.md`, `roadmap.md`, `proposal.md`, `design.md`, `spec-index.md` | Se solapan entre sí y con el work item. El "por qué" cabe en el delta; el diseño, si hace falta, es un bloque Mermaid dentro del delta |
-| `plan.md` separado | Era una plantilla fija de cinco pasos TDD. El plan real son las casillas del delta |
-| Modos de archivado "solo docs" y "solo cierre" | Un solo momento: tras el merge, `/sdd-merge` |
-| Sincronización de ficheros entre repos | El plugin se instala, el workflow se referencia. Cada repo solo tiene su `docs/` |
-| Instaladores de cientos de líneas, recibo, worktree pinneado, hooks de deriva | Lo hace `claude plugin`, y una tarea diaria del sistema lo mantiene al día |
-| Aprobación como campo editable sin control | Si importa, el delta va en su PR con CODEOWNERS |
-| Checks en modo aviso | `enforce: true` por defecto |
-
-## Estructura del repo
+**1. Pide el delta.** En Claude Code, dentro del repo:
 
 ```
-.claude-plugin/marketplace.json     ← este repo es un marketplace de Claude Code con un plugin
-plugins/sdd/
-  .claude-plugin/plugin.json
-  skills/sdd-change/SKILL.md
-  skills/sdd-impl/SKILL.md
-  skills/sdd-merge/SKILL.md
-  scripts/sdd.py                    ← lint, check, merge, scan
-  scripts/tests/test_sdd.py
-templates/spec.md, delta.md, CLAUDE.md
-docs/features/registro-usuario/     ← ejemplo real: spec + delta aprobado
-.github/workflows/sdd-checks.yml    ← CI propio y workflow reutilizable
-setup/install.ps1, install.sh       ← dos comandos de claude plugin, las plantillas y la tarea diaria
-setup/update.ps1, update.sh         ← lo que ejecuta la tarea: marketplace update + plugin update, con log
+/sdd 1234 límite de intentos al confirmar el email
 ```
+
+El agente lee el ticket si tienes el gestor conectado (si no, te pregunta lo imprescindible una vez), busca la funcionalidad en `docs/features/`, y escribe `docs/features/registro-usuario/changes/1234-limite-intentos/delta.md`:
+
+```markdown
+---
+pbi: 1234
+title: Límite de intentos de confirmación
+feature: registro-usuario
+status: draft
+---
+## Por qué
+Un código de seis dígitos con 24 horas de plazo admite fuerza bruta.
+
+## ADDED
+### REQ-REG-006 Límite de intentos fallidos
+GIVEN un usuario pendiente que ya ha enviado cuatro códigos incorrectos
+WHEN envía un quinto código incorrecto
+THEN el registro se descarta y se avisa a la persona
+
+## MODIFIED
+### REQ-REG-003 Código incorrecto
+GIVEN un usuario pendiente con menos de cuatro intentos fallidos
+WHEN confirma con un código distinto al que recibió
+THEN el usuario sigue pendiente, se cuenta el intento y puede volver a intentarlo
+
+## REMOVED
+
+## Plan
+- [ ] Test: el quinto código incorrecto descarta el registro
+- [ ] Test: el cuarto deja el registro pendiente con 4 intentos
+```
+
+Crea la rama `feature/1234-limite-intentos` y hace un commit solo con el delta. **No escribe código.**
+
+**2. Aprueba.** Lee el delta. Si estás de acuerdo, cambia `status: draft` por `status: approved` (o, si tu equipo prefiere que quede constancia, abre una PR solo con el delta y que la apruebe quien corresponda). Si no, díselo al agente y lo corrige.
+
+**3. Implementa.**
+
+```
+/sdd 1234
+```
+
+Con el delta en `approved`, el agente crea las tareas en el gestor si se lo pides (una por casilla del plan) y va requisito a requisito: escribe el test que demuestra el `GIVEN / WHEN / THEN`, lo ve fallar, escribe el código mínimo, y hace un commit `feat: límite de intentos (REQ-REG-006)`. No toca el `spec.md` ni implementa nada que no esté en el delta; si descubre que falta algo, te lo dice en vez de colarlo. Al terminar pone `status: implemented`.
+
+**4. Abre la PR.** El CI valida el delta. El revisor tiene una [tabla de siete comprobaciones](plugins/sdd/skills/sdd/references/review-checklist.md): cada requisito con su test, nada fuera del delta, el spec intacto.
+
+**5. Cierra.** Tras el merge:
+
+```
+/sdd 1234
+```
+
+El agente fusiona el delta en `spec.md` (REQ-REG-006 aparece, REQ-REG-003 queda con el texto nuevo, el historial gana una fila) y archiva la carpeta del cambio. Si se lo pides, copia los requisitos a los criterios de aceptación del ticket y lo cierra.
+
+En resumen: `/sdd <id>` siempre hace lo que toca según el estado del delta. No hay que recordar más comandos.
+
+## Cuando no hace falta delta
+
+Si el cambio **no añade, modifica ni quita ningún requisito** (un bug dentro de un comportamiento ya descrito, un refactor, deuda técnica), no hay delta: el agente implementa con TDD y cita el requisito existente en el commit. La prueba es sencilla: si después del cambio todas las frases `GIVEN / WHEN / THEN` del spec siguen siendo ciertas y no hace falta ninguna nueva, no es un delta.
+
+## Varios servicios, una funcionalidad
+
+En un ecosistema de microservicios una funcionalidad suele tocar dos o tres repos. Reglas:
+
+- **Cada repo tiene su `docs/features/`** y sus specs. No hay un spec central: el spec de un servicio describe lo que ese servicio hace, incluidos los **mensajes y contratos que publica** (`REQ-REG-010 Publica UserActivated cuando…`). El servicio que consume tiene su propio requisito (`REQ-NOT-004 Al recibir UserActivated…`).
+- **El mismo PBI, un delta por repo.** Los deltas comparten `pbi` y se aprueban por separado; cada uno lo revisa quien conoce ese servicio. El trailer `Refs: PBI-1234` en los commits de todos los repos permite reconstruir el cambio completo desde Azure DevOps.
+- **El área del requisito es el contexto, no el repo**: `REG` para registro aunque mañana se parta en dos servicios; así los ids no cambian al reorganizar.
+- **Librerías compartidas** (`Woffu.Library.*` y similares) también llevan spec: lo que exponen son requisitos de la librería, y una versión nueva es un delta. El servicio que la adopta no repite esos requisitos; los referencia.
+- El plugin y el CI son los mismos para todos los repos; nada se copia de un repo a otro. Cuando el flujo cambia, cambia en este repo y cada developer lo recibe en la actualización de las 08:00.
+
+## Proyectos legacy
+
+Un sistema de años no tiene spec y no se va a escribir entero. Tampoco hace falta:
+
+- **Spec de rescate, solo de lo que tocas.** La primera vez que un cambio toca una zona sin spec, el agente crea `docs/features/<zona>/spec.md` con los requisitos que describen **el comportamiento actual relevante para ese cambio** (tres o cuatro frases `GIVEN / WHEN / THEN`, fila "Spec inicial" en el historial) y, encima, el delta con lo que cambia. Lo que no se toca sigue sin spec; el código es la verdad hasta que alguien lo necesite.
+- **La vía rápida es la normal al principio.** La mayoría de cambios en legacy son bugs dentro de comportamientos existentes: se implementan citando el requisito, o sin requisito si todavía no existe.
+- **Un área por módulo que se entienda**, no por carpeta del código: `NOM` para nómina, `FICH` para fichajes. Que el nombre sobreviva a la próxima reorganización.
+- **No se exige TDD retroactivo**: el test que acompaña a cada requisito nuevo es el primero de esa zona; con el tiempo la cobertura crece donde hay cambios, que es donde importa.
+- El CI en modo `enforce: true` también vale en legacy, porque una PR sin delta pasa; solo exige que, cuando hay delta, esté bien.
+
+## Skills de librerías
+
+Además del flujo, el mismo marketplace puede repartir **skills de uso de librerías** (cómo se usa la caché, la mensajería, los feature flags…): un plugin `libraries` con una skill por librería que el agente carga cuando toca esa librería. Se instalan aparte, solo quien las necesita:
+
+```
+claude plugin install libraries@sdd-developer-setup
+```
+
+Y la misma tarea diaria las mantiene al día. Cómo se añade una está en [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md#añadir-una-skill-de-librería). La primera, `masstransit-saga`, resume cómo montar una saga con MassTransit a partir de [MassTransit.Saga.Demo](https://github.com/goguiGit/MassTransit.Saga.Demo).
+
+## Preguntas frecuentes
+
+**¿Quién aprueba?** Quien el equipo decida; por defecto, cualquiera que no sea quien pidió el cambio. Si la aprobación debe quedar registrada, el delta se mergea en su propia PR y CODEOWNERS limita quién la aprueba.
+
+**¿Y si el ticket cambia a mitad?** El delta vuelve a `draft`, se modifica, se vuelve a aprobar. El agente no implementa requisitos que no estén en un delta aprobado.
+
+**¿Qué pasa si el spec y el código no coinciden?** El código manda sobre el comportamiento, el spec sobre lo acordado. Cuando se detecta, es un delta: o se corrige el código (el spec tenía razón) o se corrige el spec (el código tenía razón y nadie lo había escrito).
+
+**¿Funciona sin Azure DevOps ni Jira?** Sí. El id puede ser cualquier número o clave; el agente te pregunta lo que necesita si no puede leer el ticket.
+
+**¿Funciona con Codex o Copilot?** El `AGENTS.md` del repo lo leen los tres. La skill `/sdd` es de Claude Code; en otros agentes se puede seguir el mismo ciclo a mano con `sdd.py`.
+
+**¿Dónde veo qué cambió una funcionalidad con el tiempo?** En `## Historial` de su `spec.md` y en `changes/archive/`, donde quedan todos los deltas fusionados con su fecha.
