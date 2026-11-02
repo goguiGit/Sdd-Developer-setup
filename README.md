@@ -188,7 +188,21 @@ git clone https://github.com/goguiGit/Sdd-Developer-setup
 ./Sdd-Developer-setup/setup/install.sh [~/src/mi-repo]
 ```
 
-El instalador hace dos cosas de Claude Code (`claude plugin marketplace add goguiGit/Sdd-Developer-setup` y `claude plugin install sdd@sdd-developer-setup`) y copia `templates/CLAUDE.md` donde no exista. Actualizar es `claude plugin update sdd@sdd-developer-setup`, o volver a ejecutar el instalador. No hay recibo, ni worktree, ni hooks de deriva: la versión la lleva el gestor de plugins.
+El instalador hace tres cosas: registra el marketplace e instala el plugin (`claude plugin marketplace add goguiGit/Sdd-Developer-setup`, `claude plugin install sdd@sdd-developer-setup`), copia `templates/CLAUDE.md` donde no exista, y **programa la actualización diaria**. No hay recibo, ni worktree, ni hooks de deriva: la versión la lleva el gestor de plugins.
+
+### Actualización automática
+
+Para que todos los developers tengan siempre la última versión, el instalador deja una tarea que cada día ejecuta `setup/update.ps1` (o `update.sh`): `claude plugin marketplace update` seguido de `claude plugin update`, con log en `~/.claude/sdd-update.log`. La hora es configurable; por defecto, las 08:00.
+
+| | Windows | macOS y Linux |
+|---|---|---|
+| Mecanismo | Tarea del Programador de tareas `Claude sdd plugin update` (`StartWhenAvailable`: si el equipo estaba apagado, corre al encenderlo) | Entrada de `crontab` marcada con `# claude-sdd-plugin-update` |
+| Cambiar la hora | `.\setup\install.ps1 -UpdateAt 09:30` | `UPDATE_AT=09:30 ./setup/install.sh` |
+| Instalar sin tarea | `-NoSchedule` | `NO_SCHEDULE=1 ./setup/install.sh` |
+| Quitar la tarea | `.\setup\install.ps1 -RemoveSchedule` | `./setup/install.sh --remove-schedule` |
+| Actualizar a mano | `.\setup\update.ps1` | `./setup/update.sh` |
+
+La tarea solo ejecuta los dos comandos de `claude plugin`; si Claude Code no está en el PATH del usuario a esa hora (por ejemplo, instalado solo en una shell), el log lo dirá y basta con lanzar el update a mano.
 
 ## Ejemplo incluido
 
@@ -209,7 +223,7 @@ git checkout docs/ && git clean -fd docs/                                       
 | `plan.md` separado | Era una plantilla fija de cinco pasos TDD. El plan real son las casillas del delta |
 | Modos de archivado "solo docs" y "solo cierre" | Un solo momento: tras el merge, `/sdd-merge` |
 | Sincronización de ficheros entre repos | El plugin se instala, el workflow se referencia. Cada repo solo tiene su `docs/` |
-| Instaladores de cientos de líneas, recibo, worktree pinneado, hooks de deriva | Lo hace `claude plugin` |
+| Instaladores de cientos de líneas, recibo, worktree pinneado, hooks de deriva | Lo hace `claude plugin`, y una tarea diaria del sistema lo mantiene al día |
 | Aprobación como campo editable sin control | Si importa, el delta va en su PR con CODEOWNERS |
 | Checks en modo aviso | `enforce: true` por defecto |
 
@@ -227,5 +241,6 @@ plugins/sdd/
 templates/spec.md, delta.md, CLAUDE.md
 docs/features/registro-usuario/     ← ejemplo real: spec + delta aprobado
 .github/workflows/sdd-checks.yml    ← CI propio y workflow reutilizable
-setup/install.ps1, install.sh       ← dos comandos de claude plugin y las plantillas
+setup/install.ps1, install.sh       ← dos comandos de claude plugin, las plantillas y la tarea diaria
+setup/update.ps1, update.sh         ← lo que ejecuta la tarea: marketplace update + plugin update, con log
 ```
