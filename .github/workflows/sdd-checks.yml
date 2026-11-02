@@ -1,0 +1,51 @@
+name: sdd-checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      docs_root:
+        description: Carpeta con las features (docs por defecto)
+        type: string
+        default: docs
+      enforce:
+        description: Falla la PR si hay problemas (true) o solo avisa (false)
+        type: boolean
+        default: true
+
+jobs:
+  script-tests:
+    if: github.event_name != 'workflow_call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -I -m unittest discover -s plugins/sdd/scripts/tests -v
+
+  deltas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo del llamador
+        uses: actions/checkout@v4
+      - name: Script de SDD
+        uses: actions/checkout@v4
+        with:
+          repository: goguiGit/Sdd-Developer-setup
+          path: .sdd-tooling
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint y merge-check de los deltas abiertos
+        shell: bash
+        run: |
+          set +e
+          python -I .sdd-tooling/plugins/sdd/scripts/sdd.py scan "${{ inputs.docs_root || 'docs' }}" | tee sdd.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            while IFS= read -r line; do echo "::warning::$line"; done < sdd.log
+            if [ "${{ inputs.enforce != false }}" = "true" ]; then exit "$code"; fi
+          fi
