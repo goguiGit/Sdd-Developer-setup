@@ -1,7 +1,8 @@
 ---
 name: sdd-models
-description: Muestra, recomienda o cambia el nivel de modelo que el flujo SDD usa en cada fase (crear el delta, implementar, revisar, fusionar), guardándolo en sdd.json del repo. Usar cuando cambien los modelos disponibles, cuando algo salga caro o flojo, o al preguntar qué modelo conviene ("qué modelo usa cada fase", "cambia el modelo de implementación", "hay modelos nuevos", "/sdd-models").
-argument-hint: [show | recommend | set <fase> <alias> | reset]
+description: >-
+  Muestra, recomienda o cambia el nivel de modelo que el flujo SDD usa en cada fase (crear el delta, implementar, revisar, fusionar), guardándolo en sdd.json del repo. Usar cuando cambien los modelos disponibles, cuando algo salga caro o flojo, o al preguntar qué modelo conviene ("qué modelo usa cada fase", "cambia el modelo de implementación", "hay modelos nuevos", "/sdd-models").
+argument-hint: "[show | recommend | set <fase> <alias> | reset]"
 ---
 
 Los modelos cambian; el flujo no. Esta skill mantiene la correspondencia fase → nivel en `sdd.json` (raíz del repo) sin tocar nada más. La política y los criterios están en [../sdd/references/models.md](../sdd/references/models.md).

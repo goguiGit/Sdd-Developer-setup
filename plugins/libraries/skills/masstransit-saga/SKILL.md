@@ -1,6 +1,7 @@
 ---
 name: masstransit-saga
-description: Cómo montar una saga (máquina de estados) con MassTransit 8 en .NET: MassTransitStateMachine, Schedule para plazos, Ignore y OnMissingInstance, repositorio EF Core, transporte SQL Server, RabbitMQ o Azure Service Bus, y cómo probarla con el test harness. Usar al crear o tocar una saga, un proceso que espera a una persona o a un plazo, o al elegir transporte ("necesito una saga", "proceso con timeout", "state machine de MassTransit", "test harness de MassTransit").
+description: >-
+  Cómo montar una saga (máquina de estados) con MassTransit 8 en .NET: MassTransitStateMachine, Schedule para plazos, Ignore y OnMissingInstance, repositorio EF Core, transporte SQL Server, RabbitMQ o Azure Service Bus, y cómo probarla con el test harness. Usar al crear o tocar una saga, un proceso que espera a una persona o a un plazo, o al elegir transporte ("necesito una saga", "proceso con timeout", "state machine de MassTransit", "test harness de MassTransit").
 ---
 
 Una saga de MassTransit es una máquina de estados con instancia persistida: una fila por proceso en curso que avanza con cada mensaje y se borra al terminar. Ejemplo completo, probado y documentado: [MassTransit.Saga.Demo](https://github.com/goguiGit/MassTransit.Saga.Demo) (registro con confirmación de email, dos servicios, tres transportes). Lee su README antes de inventar.

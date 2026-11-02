@@ -1,8 +1,14 @@
 {
   "name": "libraries",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Skills de uso de librerías, una por librería, para que el agente las use como el equipo quiere. Instalación opcional.",
-  "author": { "name": "Rodrigo Valdez" },
+  "author": {
+    "name": "Rodrigo Valdez"
+  },
   "repository": "https://github.com/goguiGit/Sdd-Developer-setup",
-  "keywords": ["libraries", "masstransit"]
+  "keywords": [
+    "libraries",
+    "masstransit"
+  ],
+  "license": "MIT"
 }

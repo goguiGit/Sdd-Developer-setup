@@ -1,7 +1,8 @@
 ---
 name: sdd
-description: Trabaja un cambio con Spec-Driven Development según el estado de su delta: lo crea si no existe, se detiene si está en draft, lo implementa con TDD si está approved y lo fusiona en el spec si está implemented. Usar al empezar, continuar o cerrar un PBI, bug o tarea ("trabaja el PBI 1234", "implementa el 1234", "cierra el 1234", "/sdd 1234").
-argument-hint: <id> [descripción corta] [--feature <slug>]
+description: >-
+  Trabaja un cambio con Spec-Driven Development según el estado de su delta: lo crea si no existe, se detiene si está en draft, lo implementa con TDD si está approved y lo fusiona en el spec si está implemented. Usar al empezar, continuar o cerrar un PBI, bug o tarea ("trabaja el PBI 1234", "implementa el 1234", "cierra el 1234", "/sdd 1234").
+argument-hint: "<id> [descripción corta] [--feature <slug>]"
 ---
 
 Un `spec.md` por feature con requisitos `REQ-<AREA>-NNN` en GIVEN/WHEN/THEN; un `delta.md` por cambio. El spec solo cambia por fusión de un delta. Formatos y reglas en [references/format.md](references/format.md); el script que valida y fusiona es `${CLAUDE_PLUGIN_ROOT}/scripts/sdd.py`. Si hay un gestor de tareas conectado por MCP (Azure DevOps, Jira), lo que se hace con él en cada fase está en [references/trackers.md](references/trackers.md). Qué nivel de modelo conviene en cada fase, y cuándo subir o bajar, en [references/models.md](references/models.md); el repo puede fijarlo en `sdd.json` (`models`, `tracker`, `createTasks`), que se lee antes de empezar, y se cambia con `/sdd-models`.
