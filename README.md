@@ -10,6 +10,7 @@ Esta guía es para **usarlo**. Si quieres saber cómo está construido o cambiar
 - [Conectar el gestor de tareas](#conectar-el-gestor-de-tareas)
 - [Trabajar un cambio, paso a paso](#trabajar-un-cambio-paso-a-paso)
 - [Cuando no hace falta delta](#cuando-no-hace-falta-delta)
+- [Encontrar lo que ya existe](#encontrar-lo-que-ya-existe)
 - [Varios servicios, una funcionalidad](#varios-servicios-una-funcionalidad)
 - [Proyectos legacy](#proyectos-legacy)
 - [Skills de librerías](#skills-de-librerías)
@@ -159,11 +160,31 @@ En resumen: `/sdd <id>` siempre hace lo que toca según el estado del delta. No 
 
 Si el cambio **no añade, modifica ni quita ningún requisito** (un bug dentro de un comportamiento ya descrito, un refactor, deuda técnica), no hay delta: el agente implementa con TDD y cita el requisito existente en el commit. La prueba es sencilla: si después del cambio todas las frases `GIVEN / WHEN / THEN` del spec siguen siendo ciertas y no hace falta ninguna nueva, no es un delta.
 
+## Encontrar lo que ya existe
+
+Con veinte funcionalidades y doscientos requisitos nadie, ni el agente, debe leer todos los specs para saber qué hay. El script mantiene tres índices generados en `docs/features/`, y el agente empieza siempre por ellos:
+
+| Fichero | Qué contiene | Para qué |
+|---|---|---|
+| `INDEX.md` | Una línea por funcionalidad (título, nº de requisitos, deltas abiertos, último cambio) y la lista de deltas abiertos | Saber qué existe y qué está en curso en una pantalla |
+| `REQ-INDEX.md` | Una línea por requisito activo: id, título, funcionalidad y cuántos ficheros de código lo nombran | Encontrar el requisito que toca sin abrir specs; ver cuáles no tienen test |
+| `CONTRACTS.md` | Qué mensajes publica y consume cada requisito (líneas `Publica:` / `Consume:` del spec) | Saber quién emite y quién escucha cada evento entre servicios |
+
+Se regeneran solos al fusionar un delta, y el CI falla si alguien los deja desactualizados (`sdd.py index --check`). Para seguir un requisito concreto hasta el final:
+
+```
+python plugins/sdd/scripts/sdd.py where REQ-REG-003
+```
+
+devuelve su texto en el spec, los deltas que lo tocaron (abiertos y archivados), los ficheros de código y tests que lo nombran y los commits que lo citan. Es la trazabilidad completa en una pantalla, sin herramientas externas: la dan los ids estables y la convención de ponerlos en tests y commits.
+
+¿Y un grafo de conocimiento (Graphify y similares)? Lo evaluaremos cuando aparezcan preguntas que los índices y `where` no respondan bien, como "si cambio este requisito, qué servicios se ven afectados" a través de muchos repos; el criterio está en [`docs/decisiones.md`](docs/decisiones.md).
+
 ## Varios servicios, una funcionalidad
 
 En un ecosistema de microservicios una funcionalidad suele tocar dos o tres repos. Reglas:
 
-- **Cada repo tiene su `docs/features/`** y sus specs. No hay un spec central: el spec de un servicio describe lo que ese servicio hace, incluidos los **mensajes y contratos que publica** (`REQ-REG-010 Publica UserActivated cuando…`). El servicio que consume tiene su propio requisito (`REQ-NOT-004 Al recibir UserActivated…`).
+- **Cada repo tiene su `docs/features/`** y sus specs. No hay un spec central: el spec de un servicio describe lo que ese servicio hace, incluidos los **mensajes que publica** (línea `Publica: UserActivated` en el requisito). El servicio que consume tiene su propio requisito con `Consume: UserActivated`. `CONTRACTS.md` de cada repo lista ambos lados; entre repos, la búsqueda de código de GitHub por el nombre del mensaje o del requisito es el índice.
 - **El mismo PBI, un delta por repo.** Los deltas comparten `pbi` y se aprueban por separado; cada uno lo revisa quien conoce ese servicio. El trailer `Refs: PBI-1234` en los commits de todos los repos permite reconstruir el cambio completo desde Azure DevOps.
 - **El área del requisito es el contexto, no el repo**: `REG` para registro aunque mañana se parta en dos servicios; así los ids no cambian al reorganizar.
 - **Librerías compartidas** (`Woffu.Library.*` y similares) también llevan spec: lo que exponen son requisitos de la librería, y una versión nueva es un delta. El servicio que la adopta no repite esos requisitos; los referencia.

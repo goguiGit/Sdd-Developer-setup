@@ -31,7 +31,8 @@ THEN <resultado observable>
 | <YYYY-MM-DD> | <id> | Spec inicial |
 ```
 
-- `AREA` son mayúsculas y dígitos (`REG`, `PAY2`); el número, tres dígitos, correlativo dentro del área y nunca reutilizado.
+- `AREA` son mayúsculas y dígitos (`REG`, `PAY2`); el número, tres dígitos, correlativo dentro del área y nunca reutilizado. El área es el contexto de negocio, no el repo ni la carpeta: sobrevive a las reorganizaciones.
+- Un requisito puede terminar con `Publica: Mensaje1, Mensaje2` o `Consume: Mensaje` cuando emite o recibe mensajes entre servicios. De esas líneas sale `CONTRACTS.md`.
 - Un requisito es un bloque desde su `### REQ-…` hasta el siguiente `###` o `##`. Solo lo escribe la fusión de un delta.
 
 ## delta.md
@@ -78,3 +79,5 @@ THEN <resultado>
 | `check <delta>` | `ADDED` no existe aún en el spec; `MODIFIED` y `REMOVED` sí existen |
 | `merge <delta>` | Lo anterior, y que el `status` sea `approved` o `implemented`; aplica, añade historial y archiva |
 | `scan [docs]` | `lint` + `check` de todos los deltas abiertos; `archive/` se ignora. Es lo que corre CI |
+| `index [docs] [--check]` | Escribe `docs/features/INDEX.md` (features y deltas abiertos), `REQ-INDEX.md` (requisitos activos con su feature y cuántos ficheros de código los nombran) y `CONTRACTS.md` (mensajes publicados y consumidos). Con `--check`, falla si están desactualizados; es lo que corre CI. `merge` los regenera solo |
+| `where <REQ> [docs]` | El bloque del requisito, los deltas (abiertos y archivados) que lo tocaron, los ficheros de código que lo nombran y los commits (`git log --grep`) |

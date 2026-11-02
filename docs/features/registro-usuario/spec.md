@@ -12,11 +12,13 @@ Una persona se registra con su correo, recibe un código y tiene un plazo para c
 GIVEN un correo con formato válido que no está registrado
 WHEN la persona se registra
 THEN existe un usuario en estado pendiente y se le envía un código de verificación de seis dígitos
+Publica: UserRegistered, SendVerificationEmail
 
 ### REQ-REG-002 Confirmación con el código correcto
 GIVEN un usuario pendiente dentro del plazo
 WHEN confirma con el código que recibió
 THEN el usuario pasa a activo y recibe el correo de bienvenida
+Publica: UserActivated, SendWelcomeEmail
 
 ### REQ-REG-003 Código incorrecto
 GIVEN un usuario pendiente dentro del plazo
@@ -27,6 +29,7 @@ THEN el usuario sigue pendiente y puede volver a intentarlo
 GIVEN un usuario pendiente
 WHEN vence el plazo de confirmación sin confirmar
 THEN el registro se descarta y un código enviado después ya no tiene efecto
+Publica: RegistrationDiscarded
 
 ### REQ-REG-005 Correo inválido
 GIVEN un texto que no es un correo

@@ -76,8 +76,12 @@ Reglas para tocarla:
 | `lint_delta(texto, carpeta)` | Frontmatter, `status`, carpeta `<pbi>-…`, las tres secciones, ids |
 | `check_merge(delta, spec)` | `ADDED` no existe; `MODIFIED` y `REMOVED` existen |
 | `merge(delta, spec, fecha)` | Devuelve el spec fusionado con la fila de historial |
-| `merge_and_archive(ruta_delta, fecha)` | Rechaza `draft`, escribe el spec, mueve la carpeta a `archive/<fecha>-<id>-<slug>` |
+| `merge_and_archive(ruta_delta, fecha)` | Rechaza `draft`, escribe el spec, mueve la carpeta a `archive/<fecha>-<id>-<slug>` y regenera los índices |
 | `scan(raíz)` | `lint` + `check` de todos los deltas abiertos; ignora `archive/` |
+| `build_index(docs)` / `write_index` / `check_index` | Genera `INDEX.md`, `REQ-INDEX.md` y `CONTRACTS.md` en `docs/features/` a partir de los specs y deltas; `check_index` compara con lo escrito y devuelve qué está desactualizado |
+| `where(req, docs)` | Bloque del spec, deltas que lo tocan (abiertos y archivados), ficheros de código que lo nombran (`CODE_EXTENSIONS`, saltando `SKIP_DIRS` y `docs/`) y `git log --grep` |
+
+Los índices son deterministas y sin LLM: orden por slug y por id, tablas Markdown, cabecera "Generado por `sdd.py index`; no editar a mano". El recuento de tests de `REQ-INDEX.md` es "ficheros de código fuera de `docs/` que contienen el id": barato y suficiente para ver qué requisito no tiene ningún test. `CONTRACTS.md` solo se escribe si algún requisito lleva `Publica:` o `Consume:`.
 
 Trampa conocida: el bloque de un requisito va desde su `### REQ-…` hasta el siguiente `###` **o** `##`. La primera versión se tragaba `## Decisiones` con el último requisito; está cubierto por `test_decisions_section_is_kept`.
 
@@ -86,7 +90,7 @@ Trampa conocida: el bloque de un requisito va desde su `### REQ-…` hasta el si
 `.github/workflows/sdd-checks.yml` sirve para dos cosas:
 
 - **CI de este repo** (`pull_request`, `push` a `main`): job `script-tests` (los tests del script) y job `deltas` (`sdd.py scan docs` sobre el ejemplo, que debe dar `ok`).
-- **`workflow_call`** para los consumidores: solo el job `deltas`. Hace checkout del repo llamador y de este (`actions/checkout` con `repository: goguiGit/Sdd-Developer-setup`, posible porque es público) y ejecuta `scan` sobre `inputs.docs_root`. Con `enforce: true` (por defecto) la PR falla si hay problemas; con `false`, solo anota avisos.
+- **`workflow_call`** para los consumidores: solo el job `deltas`. Hace checkout del repo llamador y de este (`actions/checkout` con `repository: goguiGit/Sdd-Developer-setup`, posible porque es público) y ejecuta `scan` y, si existe `docs/features/`, `index --check` sobre `inputs.docs_root`. Con `enforce: true` (por defecto) la PR falla si hay problemas; con `false`, solo anota avisos.
 
 `script-tests` lleva `if: github.event_name != 'workflow_call'` para no ejecutarse en los consumidores.
 

@@ -15,6 +15,8 @@ Qué se dejó fuera del flujo y por qué, frente a un setup corporativo de refer
 | Aprobación como campo editable sin control | Si importa, el delta va en su PR y CODEOWNERS decide |
 | Checks en modo aviso | `enforce: true` por defecto; un aviso que no bloquea no cambia hábitos |
 | Beads u otro gestor de estado | El estado durable es el `status` del delta y el historial del spec |
+| Embeddings o vector store sobre los specs | Corpus pequeño, estructurado y con ids únicos: tres índices generados (`INDEX.md`, `REQ-INDEX.md`, `CONTRACTS.md`) y `where` por id cubren la búsqueda y la trazabilidad sin LLM. Los agentes de código mayoritarios tampoco usan vectores |
+| Grafo de conocimiento (Graphify) desde el principio | Aporta en preguntas de relación entre muchos repos ("qué afecta cambiar este requisito"), a cambio de otra dependencia, tokens por reconstrucción del lado de docs y un `graph.json` que mantener. Se revisa cuando haya una pregunta concreta que los índices no respondan, o más de ~200 requisitos y ~10 repos. Los `// REQ-…` en tests y `Refs:` en commits ya dejan el rastro que un grafo aprovecharía |
 | MCP declarados dentro del plugin | Un `.mcp.json` en el plugin fijaría la organización de Azure DevOps o el Jira para todos. El instalador registra el MCP a nivel de usuario con la organización como parámetro |
 | Avisos por Teams o Slack como parte del flujo | La PR y el ticket ya notifican. Un aviso es un paso explícito que el usuario pide con el MCP que tenga |
 | Agentes propios del plugin | Los agentes genéricos (`researcher`, `implementer`, `reviewer`, `tester`) son del setup personal del developer; el plugin solo aporta la skill y el script |

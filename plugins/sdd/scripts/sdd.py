@@ -5,6 +5,8 @@ Usage:
   python sdd.py check <delta.md>            (spec.md is two folders up: <feature>/spec.md)
   python sdd.py merge <delta.md> [--date YYYY-MM-DD]
   python sdd.py scan  [docs-root]           lint + check every changes/*/delta.md (archive excluded)
+  python sdd.py index [docs-root] [--check] write docs/features/INDEX.md, REQ-INDEX.md and CONTRACTS.md (or verify them)
+  python sdd.py where <REQ-ID> [docs-root]  spec block, deltas, tests and commits that mention a requirement
 Exit code 1 when something is wrong.
 """
 
@@ -12,10 +14,17 @@ from __future__ import annotations
 
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+
+INDEX_HEADER = "Generado por `sdd.py index`; no editar a mano.\n"
+CODE_EXTENSIONS = {".cs", ".ts", ".tsx", ".js", ".py", ".java", ".kt", ".go", ".rb", ".php", ".feature", ".sql", ".ps1", ".sh"}
+SKIP_DIRS = {".git", "bin", "obj", "node_modules", "dist", ".venv", "__pycache__", ".idea", ".vs"}
+CONTRACT_LINE = re.compile(r"^(Publica|Consume):\s*(.+)$", re.MULTILINE)
+HISTORY_ROW = re.compile(r"^\| (\d{4}-\d{2}-\d{2}) \|", re.MULTILINE)
 
 STATUSES = ("draft", "approved", "implemented")
 SECTIONS = ("ADDED", "MODIFIED", "REMOVED")
@@ -170,7 +179,153 @@ def merge_and_archive(delta_path: Path, today: str | None = None) -> Path:
     archive = change_dir.parent / "archive" / f"{today}-{change_dir.name}"
     archive.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(change_dir), str(archive))
+    write_index(spec_path.parent.parent.parent)
     return archive
+
+
+@dataclass
+class Feature:
+    slug: str
+    title: str
+    path: Path
+    requirements: dict[str, str]
+    open_deltas: list[Delta]
+    last_change: str
+
+
+def load_features(docs: Path) -> list[Feature]:
+    features: list[Feature] = []
+    for spec_path in sorted((docs / "features").glob("*/spec.md")):
+        text = spec_path.read_text(encoding="utf-8")
+        frontmatter, _ = parse_frontmatter(text)
+        open_deltas = [
+            parse_delta(path.read_text(encoding="utf-8"))
+            for path in sorted(spec_path.parent.glob("changes/*/delta.md"))
+            if "archive" not in path.parts
+        ]
+        dates = HISTORY_ROW.findall(text)
+        features.append(Feature(
+            slug=spec_path.parent.name,
+            title=frontmatter.get("title", spec_path.parent.name),
+            path=spec_path,
+            requirements=split_requirements(text),
+            open_deltas=open_deltas,
+            last_change=max(dates) if dates else "",
+        ))
+    return features
+
+
+def row(*cells: str) -> str:
+    return "|" + "|".join(f" {cell} " if cell else " " for cell in cells) + "|"
+
+
+def requirement_title(block: str) -> str:
+    match = REQ_HEADING.match(block)
+    return match.group(2).strip() if match else ""
+
+
+def code_files(root: Path):
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix in CODE_EXTENSIONS and not (SKIP_DIRS & set(path.parts)) and "docs" not in path.parts:
+            yield path
+
+
+def files_mentioning(root: Path, needle: str) -> list[Path]:
+    found: list[Path] = []
+    for path in code_files(root):
+        try:
+            if needle in path.read_text(encoding="utf-8", errors="ignore"):
+                found.append(path)
+        except OSError:
+            continue
+    return found
+
+
+def build_index(docs: Path) -> dict[str, str]:
+    features = load_features(docs)
+    root = docs.parent
+
+    rows = ["| Feature | Título | Requisitos | Deltas abiertos | Último cambio |", "|---|---|---|---|---|"]
+    rows += [f"| {f.slug} | {f.title} | {len(f.requirements)} | {len(f.open_deltas)} | {f.last_change} |" for f in features]
+    open_rows = ["| PBI | Título | Feature | Estado |", "|---|---|---|---|"]
+    for f in features:
+        open_rows += [f"| {d.frontmatter.get('pbi', '')} | {d.frontmatter.get('title', '')} | {f.slug} | {d.frontmatter.get('status', '')} |" for d in f.open_deltas]
+    index = "# Índice de features\n\n" + INDEX_HEADER + "\n" + "\n".join(rows) + "\n"
+    if len(open_rows) > 2:
+        index += "\n## Deltas abiertos\n\n" + "\n".join(open_rows) + "\n"
+
+    req_rows = ["| Requisito | Título | Feature | Tests |", "|---|---|---|---|"]
+    contracts: dict[str, dict[str, list[str]]] = {}
+    for f in features:
+        for req_id, block in f.requirements.items():
+            tests = len(files_mentioning(root, req_id))
+            req_rows.append(f"| {req_id} | {requirement_title(block)} | {f.slug} | {tests} |")
+            for kind, names in CONTRACT_LINE.findall(block):
+                for name in (n.strip() for n in names.split(",") if n.strip()):
+                    entry = contracts.setdefault(name, {"Publica": [], "Consume": []})
+                    entry[kind].append(f"{req_id} ({f.slug})")
+    req_index = "# Índice de requisitos\n\n" + INDEX_HEADER + "\n" + "\n".join(req_rows) + "\n"
+
+    result = {"INDEX.md": index, "REQ-INDEX.md": req_index}
+    if contracts:
+        contract_rows = ["| Mensaje | Publica | Consume |", "|---|---|---|"]
+        contract_rows += [row(name, ", ".join(c["Publica"]), ", ".join(c["Consume"])) for name, c in sorted(contracts.items())]
+        result["CONTRACTS.md"] = "# Contratos entre features\n\n" + INDEX_HEADER + "\nLíneas `Publica:` y `Consume:` de los requisitos.\n\n" + "\n".join(contract_rows) + "\n"
+    return result
+
+
+def write_index(docs: Path) -> list[Path]:
+    written: list[Path] = []
+    for name, content in build_index(docs).items():
+        path = docs / "features" / name
+        path.write_text(content, encoding="utf-8")
+        written.append(path)
+    return written
+
+
+def check_index(docs: Path) -> list[str]:
+    problems: list[str] = []
+    for name, content in build_index(docs).items():
+        path = docs / "features" / name
+        shown = f"{docs.name}/features/{name}"
+        if not path.exists():
+            problems.append(f"{shown} no existe: ejecuta sdd.py index")
+        elif path.read_text(encoding="utf-8").replace("\r\n", "\n") != content:
+            problems.append(f"{shown} desactualizado: ejecuta sdd.py index")
+    return problems
+
+
+def where(req_id: str, docs: Path) -> str:
+    root = docs.parent
+    rel = lambda p: str(p.relative_to(root)).replace("\\", "/")  # noqa: E731
+    lines: list[str] = []
+    owner = next((f for f in load_features(docs) if req_id in f.requirements), None)
+    if owner is None:
+        lines.append(f"{req_id} no está en ningún spec de {rel(docs / 'features')}")
+    else:
+        lines.append(f"Spec: {rel(owner.path)}")
+        lines.append(owner.requirements[req_id].rstrip())
+
+    deltas = []
+    for path in sorted((docs / "features").rglob("changes/**/delta.md")):
+        if req_id in path.read_text(encoding="utf-8"):
+            delta = parse_delta(path.read_text(encoding="utf-8"))
+            state = "archive" if "archive" in path.parts else delta.frontmatter.get("status", "")
+            deltas.append(f"  {delta.frontmatter.get('pbi', '')} {delta.frontmatter.get('title', '')} [{state}] {rel(path)}")
+    lines.append("\nDeltas:" if deltas else "\nDeltas: ninguno")
+    lines += deltas
+
+    tests = [f"  {rel(p)}" for p in files_mentioning(root, req_id)]
+    lines.append("\nCódigo y tests que lo nombran:" if tests else "\nCódigo y tests que lo nombran: ninguno")
+    lines += tests
+
+    try:
+        log = subprocess.run(["git", "log", "--oneline", f"--grep={req_id}"], cwd=root, capture_output=True, text=True, check=False).stdout.strip()
+    except OSError:
+        log = ""
+    lines.append("\nCommits:" if log else "\nCommits: ninguno")
+    lines += [f"  {line}" for line in log.splitlines()]
+    return "\n".join(lines)
 
 
 def scan(root: Path) -> list[str]:
@@ -190,13 +345,29 @@ def scan(root: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2 or argv[1] not in ("lint", "check", "merge", "scan"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if len(argv) < 2 or argv[1] not in ("lint", "check", "merge", "scan", "index", "where"):
         print(__doc__)
         return 2
     command = argv[1]
+    positional = [a for a in argv[2:] if not a.startswith("--")]
     try:
         if command == "scan":
-            errors = scan(Path(argv[2] if len(argv) > 2 else "docs"))
+            errors = scan(Path(positional[0] if positional else "docs"))
+        elif command == "index":
+            docs = Path(positional[0] if positional else "docs")
+            if "--check" in argv:
+                errors = check_index(docs)
+            else:
+                for path in write_index(docs):
+                    print(f"escrito {path}")
+                return 0
+        elif command == "where":
+            if not positional:
+                print("falta el id del requisito")
+                return 2
+            print(where(positional[0], Path(positional[1] if len(positional) > 1 else "docs")))
+            return 0
         else:
             delta_path = Path(argv[2])
             text = delta_path.read_text(encoding="utf-8")

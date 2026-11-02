@@ -39,12 +39,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Lint y merge-check de los deltas abiertos
+      - name: Deltas abiertos e índices al día
         shell: bash
         run: |
           set +e
-          python -I .sdd-tooling/plugins/sdd/scripts/sdd.py scan "${{ inputs.docs_root || 'docs' }}" | tee sdd.log
+          root="${{ inputs.docs_root || 'docs' }}"
+          python -I .sdd-tooling/plugins/sdd/scripts/sdd.py scan "$root" | tee sdd.log
           code=${PIPESTATUS[0]}
+          if [ -d "$root/features" ]; then
+            python -I .sdd-tooling/plugins/sdd/scripts/sdd.py index "$root" --check | tee -a sdd.log
+            [ ${PIPESTATUS[0]} -ne 0 ] && code=1
+          fi
           if [ "$code" -ne 0 ]; then
             while IFS= read -r line; do echo "::warning::$line"; done < sdd.log
             if [ "${{ inputs.enforce != false }}" = "true" ]; then exit "$code"; fi
