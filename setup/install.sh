@@ -101,11 +101,14 @@ esac
 
 if [ -n "$repo" ]; then
   echo "== Repo $repo"
-  for name in AGENTS.md CLAUDE.md sdd.json; do
-    [ -f "$repo/$name" ] || { cp "$root/templates/$name" "$repo/$name"; echo "   $name copiado"; }
-  done
-  echo "   rellena los <...> de AGENTS.md"
+  copy_template() { [ -f "$repo/$1" ] || { cp "$2" "$repo/$1"; echo "   $1 copiado"; }; }
+  copy_template AGENTS.md "$root/templates/AGENTS.md"
+  copy_template CLAUDE.md "$root/templates/CLAUDE.md"
+  copy_template sdd.json "$root/plugins/sdd/templates/sdd.json"
+  echo "   rellena los <...> de AGENTS.md y activa los lenguajes con /sdd-languages use <lang>"
   [ -d "$repo/docs/features" ] || { mkdir -p "$repo/docs/features"; echo "   creado $repo/docs/features; la primera feature la crea /sdd"; }
+  python3 -I "$root/plugins/sdd/scripts/sdd.py" index "$repo/docs" >/dev/null
+  echo "   índices generados en docs/features (INDEX.md, REQ-INDEX.md)"
 fi
 
 if [ -z "${NO_SCHEDULE:-}" ]; then
@@ -114,4 +117,4 @@ if [ -z "${NO_SCHEDULE:-}" ]; then
 fi
 
 echo
-echo "Listo. En una sesión de Claude Code dentro del repo: /sdd <id> <descripción>"
+echo "Listo. Reinicia Claude Code si estaba abierto; después, dentro del repo: /sdd <id> <descripción>"

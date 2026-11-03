@@ -69,24 +69,33 @@ if ($Tracker -ne 'None') {
 
 if ($Repo) {
     Write-Host "== Repo $Repo" -ForegroundColor Cyan
-    foreach ($name in 'AGENTS.md', 'CLAUDE.md', 'sdd.json') {
+    $templates = @{
+        'AGENTS.md' = Join-Path $root 'templates\AGENTS.md'
+        'CLAUDE.md' = Join-Path $root 'templates\CLAUDE.md'
+        'sdd.json'  = Join-Path $root 'plugins\sdd\templates\sdd.json'
+    }
+    foreach ($name in $templates.Keys) {
         if (-not (Test-Path (Join-Path $Repo $name))) {
-            Copy-Item (Join-Path $root "templates\$name") (Join-Path $Repo $name)
+            Copy-Item $templates[$name] (Join-Path $Repo $name)
             Write-Host "   $name copiado"
         }
     }
-    Write-Host '   rellena los <...> de AGENTS.md'
+    Write-Host '   rellena los <...> de AGENTS.md y activa los lenguajes con /sdd-languages use <lang>'
     $features = Join-Path $Repo 'docs\features'
     if (-not (Test-Path $features)) {
         New-Item -ItemType Directory -Force $features | Out-Null
         Write-Host "   creado $features; la primera feature la crea /sdd"
     }
+    python -I (Join-Path $root 'plugins\sdd\scripts\sdd.py') index (Join-Path $Repo 'docs') | Out-Null
+    Write-Host '   índices generados en docs/features (INDEX.md, REQ-INDEX.md)'
 }
 
 if (-not $NoSchedule) {
     Write-Host "== Actualización diaria a las $UpdateAt" -ForegroundColor Cyan
     $updateScript = Join-Path $PSScriptRoot 'update.ps1'
-    $shell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+    $shellCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+    if (-not $shellCommand) { $shellCommand = Get-Command powershell }
+    $shell = $shellCommand.Source
     $action = New-ScheduledTaskAction -Execute $shell -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$updateScript`""
     $trigger = New-ScheduledTaskTrigger -Daily -At $UpdateAt
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
@@ -95,4 +104,4 @@ if (-not $NoSchedule) {
 }
 
 Write-Host ''
-Write-Host 'Listo. En una sesión de Claude Code dentro del repo: /sdd <id> <descripción>' -ForegroundColor Green
+Write-Host 'Listo. Reinicia Claude Code si estaba abierto; después, dentro del repo: /sdd <id> <descripción>' -ForegroundColor Green

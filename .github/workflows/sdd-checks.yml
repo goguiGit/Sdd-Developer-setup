@@ -14,10 +14,14 @@ on:
         description: Falla la PR si hay problemas (true) o solo avisa (false)
         type: boolean
         default: true
+      self_service_label:
+        description: Etiqueta de PR que declara un cambio de autoservicio; sus ficheros se comparan con sdd.json selfService (siempre advisory)
+        type: string
+        default: self-service
 
 jobs:
   script-tests:
-    if: github.event_name != 'workflow_call'
+    if: github.repository == 'goguiGit/Sdd-Developer-setup'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,26 +35,41 @@ jobs:
     steps:
       - name: Repo del llamador
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Script de SDD
         uses: actions/checkout@v4
         with:
           repository: goguiGit/Sdd-Developer-setup
+          ref: ${{ github.job_workflow_sha || github.sha }}
           path: .sdd-tooling
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Deltas abiertos e índices al día
+      - name: Deltas abiertos, índices y configuración
         shell: bash
         run: |
           set +e
           root="${{ inputs.docs_root || 'docs' }}"
-          python -I .sdd-tooling/plugins/sdd/scripts/sdd.py scan "$root" | tee sdd.log
+          sdd=".sdd-tooling/plugins/sdd/scripts/sdd.py"
+          python -I "$sdd" scan "$root" | tee sdd.log
           code=${PIPESTATUS[0]}
           if [ -d "$root/features" ]; then
-            python -I .sdd-tooling/plugins/sdd/scripts/sdd.py index "$root" --check | tee -a sdd.log
+            python -I "$sdd" index "$root" --check | tee -a sdd.log
             [ ${PIPESTATUS[0]} -ne 0 ] && code=1
           fi
           if [ "$code" -ne 0 ]; then
             while IFS= read -r line; do echo "::warning::$line"; done < sdd.log
             if [ "${{ inputs.enforce != false }}" = "true" ]; then exit "$code"; fi
+          fi
+      - name: Autoservicio (advisory)
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, inputs.self_service_label || 'self-service')
+        shell: bash
+        run: |
+          root="${{ inputs.docs_root || 'docs' }}"
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" \
+            | python -I .sdd-tooling/plugins/sdd/scripts/sdd.py selfservice "$root" | tee selfservice.log || true
+          if grep -q "fuera de selfService" selfservice.log; then
+            while IFS= read -r line; do echo "::warning::PR etiquetada self-service con ficheros $line"; done < <(grep "fuera de selfService" selfservice.log)
+            echo "::warning::Un cambio que toca ficheros fuera de selfService necesita revisión de un developer; quita la etiqueta o ajusta sdd.json."
           fi
