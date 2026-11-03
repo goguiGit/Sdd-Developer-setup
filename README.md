@@ -114,13 +114,15 @@ Deja en el repo `AGENTS.md` (orientación para el agente: qué es el sistema, l�
 
 ```yaml
 name: sdd-checks
-on: [pull_request]
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 jobs:
   sdd:
     uses: goguiGit/Sdd-Developer-setup/.github/workflows/sdd-checks.yml@main
 ```
 
-Desde ese momento, una PR con un delta mal formado, que no encaja con su spec o con los índices sin regenerar falla. Una PR sin delta pasa. Si prefieres que el CI no cambie sin que lo decidas, sustituye `@main` por una etiqueta de versión (`@v0.5.0`).
+Desde ese momento, una PR con un delta mal formado, que no encaja con su spec o con los índices sin regenerar falla. Una PR sin delta pasa. Los tipos `labeled` y `unlabeled` hacen que poner la etiqueta `self-service` dispare el aviso de autoservicio sin esperar a otro push. Si prefieres que el CI no cambie sin que lo decidas, sustituye `@main` por una etiqueta de versión (`@v0.5.0`).
 
 ## Lenguajes: los tres incluidos y los tuyos (developers)
 
@@ -130,7 +132,7 @@ El flujo es el mismo en cualquier lenguaje; lo que cambia (qué extensiones son 
 |---|---|---|
 | C# / .NET | Dentro del plugin | Este repo (soporte de primera) |
 | TypeScript / JavaScript | Dentro del plugin | Este repo (soporte de primera) |
-| Python | Dentro del plugin | Este repo |
+| Python | Dentro del plugin | Este repo (soporte de primera) |
 | Cualquier otro (Go, Java, Kotlin, Rust, SQL…) | `docs/sdd/languages/<lang>.md` en el repo del producto | **Obligatorio** un `owner`: la persona o equipo que responde de él |
 
 `/sdd-languages list` enseña los disponibles; `use <lang>` activa uno en `sdd.json` y rellena la sección "Reglas del lenguaje" de `AGENTS.md`; `add go --owner equipo-plataforma` crea uno nuevo desde la plantilla, y **sin `--owner` se niega**. Es la única rigidez a propósito: cualquiera puede traer un lenguaje, pero nadie puede traerlo sin hacerse cargo. Si un lenguaje de uso general se queda bien definido en un repo, se propone a este marketplace con una PR y pasa a ser de primera.

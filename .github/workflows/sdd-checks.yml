@@ -2,12 +2,13 @@ name: sdd-checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_call:
     inputs:
       docs_root:
-        description: Carpeta con las features (docs por defecto)
+        description: Carpeta con las features, colgando de la raíz del repo (docs por defecto); sdd.json se lee de su carpeta padre
         type: string
         default: docs
       enforce:
@@ -24,8 +25,8 @@ jobs:
     if: github.repository == 'goguiGit/Sdd-Developer-setup'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -I -m unittest discover -s plugins/sdd/scripts/tests -v
@@ -34,16 +35,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repo del llamador
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Script de SDD
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: goguiGit/Sdd-Developer-setup
           ref: ${{ github.job_workflow_sha || github.sha }}
           path: .sdd-tooling
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Deltas abiertos, índices y configuración
@@ -60,7 +61,7 @@ jobs:
           fi
           if [ "$code" -ne 0 ]; then
             while IFS= read -r line; do echo "::warning::$line"; done < sdd.log
-            if [ "${{ inputs.enforce != false }}" = "true" ]; then exit "$code"; fi
+            if [ "${{ toJSON(inputs.enforce) != 'false' }}" = "true" ]; then exit "$code"; fi
           fi
       - name: Autoservicio (advisory)
         if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, inputs.self_service_label || 'self-service')

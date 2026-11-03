@@ -41,21 +41,27 @@ foreach ($tool in 'claude', 'git', 'python') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Falta '$tool' en el PATH." }
 }
 
+function Invoke-Claude([string[]] $Arguments) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & claude @Arguments 2>&1 | Out-String } finally { $ErrorActionPreference = $previous }
+}
+
 function Install-Plugin([string] $Name) {
-    $plugins = claude plugin list 2>&1 | Out-String
+    $plugins = Invoke-Claude plugin, list
     if ($plugins -match "$Name@$marketplaceName") { claude plugin update "$Name@$marketplaceName" }
     else { claude plugin install "$Name@$marketplaceName" --scope user }
 }
 
 Write-Host '== Marketplace y plugins' -ForegroundColor Cyan
-$marketplaces = claude plugin marketplace list 2>&1 | Out-String
+$marketplaces = Invoke-Claude plugin, marketplace, list
 if ($marketplaces -notmatch $marketplaceName) { claude plugin marketplace add $Marketplace }
 Install-Plugin 'sdd'
 if ($WithLibraries) { Install-Plugin 'libraries' }
 
 if ($Tracker -ne 'None') {
     Write-Host "== Gestor de tareas: $Tracker" -ForegroundColor Cyan
-    $servers = claude mcp list 2>&1 | Out-String
+    $servers = Invoke-Claude mcp, list
     if ($Tracker -eq 'AzureDevOps') {
         if (-not $Organization) { throw '-Tracker AzureDevOps necesita -Organization <nombre de la organización>.' }
         if ($servers -notmatch 'azure-devops') { claude mcp add --scope user azure-devops -- npx -y @azure-devops/mcp $Organization }
