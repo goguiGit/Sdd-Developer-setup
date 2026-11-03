@@ -13,7 +13,7 @@ Los modelos cambian; el flujo no. Esta skill mantiene la correspondencia fase �
 |---|---|
 | vacío o `show` | Lee `sdd.json` (o dice que no existe y que valen los valores por defecto) y muestra la tabla fase → alias con la razón de cada nivel. Dice también qué modelo está usando la sesión actual, si lo sabe |
 | `recommend` | Mira qué alias de nivel ofrece el host ahora (en Claude Code, los que acepta `/model`; si no puedes consultarlo, pregunta al usuario qué ve en `/model`), compara con `sdd.json` y propone cambios: un alias que ya no existe, un nivel nuevo que encaja mejor en alguna fase, o una fase que según el historial reciente (tests fallando dos veces, deltas rechazados) merece subir. Propone, no cambia |
-| `set <fase> <alias>` | Escribe la clave en `models` de `sdd.json` (`change`, `impl`, `review`, `merge`), crea el fichero desde `templates/sdd.json` si no existe, y confirma con la tabla resultante. Rechaza una fase desconocida; un alias desconocido lo avisa pero lo escribe, porque puede ser un nivel nuevo del host |
+| `set <fase> <alias>` | Escribe la clave en `models` de `sdd.json` (`change`, `impl`, `review`, `merge`), crea el fichero desde `${CLAUDE_PLUGIN_ROOT}/templates/sdd.json` si no existe, y confirma con la tabla resultante. Rechaza una fase desconocida; un alias desconocido lo avisa pero lo escribe, porque puede ser un nivel nuevo del host |
 | `reset` | Devuelve `models` a la tabla por defecto de `models.md` |
 
 ## Reglas

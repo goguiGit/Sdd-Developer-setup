@@ -32,7 +32,7 @@ MCP remoto de Atlassian (OAuth en el navegador la primera vez):
 claude mcp add --transport sse --scope user atlassian https://mcp.atlassian.com/v1/sse
 ```
 
-Operaciones: leer la issue, crear sub-tareas enlazadas a la issue padre, editar la descripción o el campo de criterios de aceptación y transicionar el estado. El id del delta es la clave de la issue (`PROJ-123`), y `pbi:` en el frontmatter la guarda tal cual; la carpeta es `PROJ-123-<slug>`.
+Operaciones: leer la issue, crear sub-tareas enlazadas a la issue padre, editar la descripción o el campo de criterios de aceptación y transicionar el estado. El id del delta es la clave de la issue (`PROJ-123`), y `pbi:` en el frontmatter la guarda tal cual; la carpeta es `PROJ-123-<slug>`, la rama `feature/PROJ-123-<slug>` y el trailer de los commits `Refs: PROJ-123` (Jira enlaza la clave allí donde aparezca).
 
 ## Otros canales
 
