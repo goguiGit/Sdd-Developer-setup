@@ -2,5 +2,6 @@
   "models": { "change": "opus", "impl": "sonnet", "review": "opus", "merge": "haiku" },
   "tracker": "AzureDevOps",
   "createTasks": true,
-  "selfService": ["docs/**", "**/*.resx", "**/i18n/**"]
+  "selfService": ["docs/**", "**/*.resx", "**/locales/**/*.json"],
+  "languages": ["csharp"]
 }

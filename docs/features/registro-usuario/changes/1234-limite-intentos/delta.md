@@ -3,6 +3,7 @@ pbi: 1234
 title: Límite de intentos de confirmación
 feature: registro-usuario
 status: approved
+approved_by: ana
 ---
 ## Por qué
 

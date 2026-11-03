@@ -1,40 +1,62 @@
-"""SDD tooling: lint a delta, check it merges into its spec, merge and archive it.
+"""SDD tooling: lint a delta, check it merges into its spec, merge and archive it, index and trace requirements.
 
 Usage:
-  python sdd.py lint  <delta.md>
-  python sdd.py check <delta.md>            (spec.md is two folders up: <feature>/spec.md)
-  python sdd.py merge <delta.md> [--date YYYY-MM-DD]
-  python sdd.py scan  [docs-root]           lint + check every changes/*/delta.md (archive excluded)
-  python sdd.py index [docs-root] [--check] write docs/features/INDEX.md, REQ-INDEX.md and CONTRACTS.md (or verify them)
-  python sdd.py where <REQ-ID> [docs-root]  spec block, deltas, tests and commits that mention a requirement
+  python3 sdd.py lint  <delta.md>
+  python3 sdd.py check <delta.md>            (spec.md is two folders up: <feature>/spec.md)
+  python3 sdd.py merge <delta.md> [--date YYYY-MM-DD]
+  python3 sdd.py scan  [docs-root]           lint + check every open delta, collisions between deltas, settings
+  python3 sdd.py index [docs-root] [--check] write docs/features/INDEX.md, REQ-INDEX.md and CONTRACTS.md (or verify them)
+  python3 sdd.py where <REQ-ID> [docs-root]  spec block, deltas, code files and commits that name a requirement
+  python3 sdd.py coverage [docs-root]        requirements that no code file names
+  python3 sdd.py selfservice [docs-root]     reads changed paths from stdin, prints those outside sdd.json selfService
+  python3 sdd.py settings [docs-root]        validates sdd.json and the active language packs
 Exit code 1 when something is wrong.
 """
 
 from __future__ import annotations
 
+import fnmatch
+import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-
-INDEX_HEADER = "Generado por `sdd.py index`; no editar a mano.\n"
-CODE_EXTENSIONS = {".cs", ".ts", ".tsx", ".js", ".py", ".java", ".kt", ".go", ".rb", ".php", ".feature", ".sql", ".ps1", ".sh"}
-SKIP_DIRS = {".git", "bin", "obj", "node_modules", "dist", ".venv", "__pycache__", ".idea", ".vs"}
-CONTRACT_LINE = re.compile(r"^(Publica|Consume):\s*(.+)$", re.MULTILINE)
-HISTORY_ROW = re.compile(r"^\| (\d{4}-\d{2}-\d{2}) \|", re.MULTILINE)
 
 STATUSES = ("draft", "approved", "implemented")
 SECTIONS = ("ADDED", "MODIFIED", "REMOVED")
 REQ_ID = re.compile(r"^REQ-[A-Z][A-Z0-9]*-\d{3}$")
 REQ_HEADING = re.compile(r"^### (REQ-\S+)(.*)$", re.MULTILINE)
-REMOVED_ITEM = re.compile(r"^- (REQ-\S+)\s*$", re.MULTILINE)
+REMOVED_ITEM = re.compile(r"^- (REQ-\S+)(?:\s+.*)?$")
+CONTRACT_LINE = re.compile(r"^(Publica|Consume):\s*(.+)$", re.MULTILINE)
+HISTORY_ROW = re.compile(r"^\| (\d{4}-\d{2}-\d{2}) \|", re.MULTILINE)
+INDEX_HEADER = "Generado por `sdd.py index`; no editar a mano.\n"
+HISTORY_TABLE_HEADER = "| Fecha | PBI | Cambio |\n|---|---|---|\n"
+
+DEFAULT_EXTENSIONS = {
+    ".cs", ".fs", ".vb", ".razor", ".cshtml",
+    ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
+    ".py", ".java", ".kt", ".kts", ".scala", ".go", ".rs", ".rb", ".php", ".swift", ".dart",
+    ".feature", ".sql", ".ps1", ".sh",
+}
+DEFAULT_SKIP_DIRS = {
+    "bin", "obj", "TestResults", "node_modules", "dist", "build", "out", "coverage", "target", "vendor",
+    "venv", "__pycache__", "packages",
+    ".git", ".next", ".nuxt", ".svelte-kit", ".gradle", ".pytest_cache", ".mypy_cache", ".tox", ".venv", ".idea", ".vs",
+}
+PLUGIN_LANGUAGES = Path(__file__).resolve().parent.parent / "skills" / "sdd" / "references" / "languages"
 
 
 class SddError(Exception):
     pass
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8-sig")
 
 
 @dataclass
@@ -46,10 +68,19 @@ class Delta:
         return split_requirements(self.sections.get(section, ""))
 
     def removed(self) -> list[str]:
-        return REMOVED_ITEM.findall(self.sections.get("REMOVED", ""))
+        ids: list[str] = []
+        for line in self.sections.get("REMOVED", "").splitlines():
+            match = REMOVED_ITEM.match(line.strip())
+            if match:
+                ids.append(match.group(1))
+        return ids
+
+    def touches(self, req_id: str) -> bool:
+        return req_id in self.requirements("ADDED") or req_id in self.requirements("MODIFIED") or req_id in self.removed()
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    text = text.lstrip("﻿")
     if not text.startswith("---"):
         return {}, text
     end = text.find("\n---", 3)
@@ -76,7 +107,7 @@ def split_sections(body: str) -> dict[str, str]:
 
 
 def split_requirements(text: str) -> dict[str, str]:
-    """Maps each REQ id to its full block (heading included), in order of appearance."""
+    """Maps each REQ id to its full block (heading included); a block ends at the next ### or ## heading."""
     blocks: dict[str, str] = {}
     boundaries = [match.start() for match in re.finditer(r"^##(?!#) ", text, re.MULTILINE)]
     matches = list(REQ_HEADING.finditer(text))
@@ -102,19 +133,41 @@ def lint_delta(text: str, folder_name: str) -> list[str]:
     status = delta.frontmatter.get("status")
     if status is not None and status not in STATUSES:
         errors.append(f"frontmatter: status '{status}' no es draft, approved ni implemented")
+    if status in ("approved", "implemented") and not delta.frontmatter.get("approved_by"):
+        errors.append("frontmatter: falta 'approved_by' (obligatorio cuando status no es draft)")
     pbi = delta.frontmatter.get("pbi")
     if pbi and not folder_name.startswith(f"{pbi}-"):
         errors.append(f"carpeta: '{folder_name}' debe empezar por el pbi {pbi}")
     for section in SECTIONS:
         if section not in delta.sections:
             errors.append(f"falta la sección {section}")
+
+    ids_by_section: dict[str, set[str]] = {}
     for section in ("ADDED", "MODIFIED"):
-        for req_id in delta.requirements(section):
+        headings = REQ_HEADING.findall(delta.sections.get(section, ""))
+        counts = Counter(req_id for req_id, _ in headings)
+        for req_id, count in counts.items():
             if not REQ_ID.match(req_id):
                 errors.append(f"{section}: '{req_id}' no cumple REQ-<AREA>-NNN")
-    for req_id in delta.removed():
-        if not REQ_ID.match(req_id):
-            errors.append(f"REMOVED: '{req_id}' no cumple REQ-<AREA>-NNN")
+            if count > 1:
+                errors.append(f"{section}: {req_id} aparece dos veces")
+        ids_by_section[section] = set(counts)
+    removed: set[str] = set()
+    for line in delta.sections.get("REMOVED", "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = REMOVED_ITEM.match(stripped)
+        if not match:
+            errors.append(f"REMOVED: '{stripped}' debe ser '- REQ-<AREA>-NNN [título]'")
+            continue
+        if not REQ_ID.match(match.group(1)):
+            errors.append(f"REMOVED: '{match.group(1)}' no cumple REQ-<AREA>-NNN")
+        removed.add(match.group(1))
+    ids_by_section["REMOVED"] = removed
+    for first, second in (("ADDED", "MODIFIED"), ("ADDED", "REMOVED"), ("MODIFIED", "REMOVED")):
+        for req_id in sorted(ids_by_section[first] & ids_by_section[second]):
+            errors.append(f"{req_id} está en {first} y {second} a la vez")
     return errors
 
 
@@ -140,6 +193,7 @@ def merge(delta_text: str, spec_text: str, today: str | None = None) -> str:
         raise SddError("; ".join(problems))
     delta = parse_delta(delta_text)
     today = today or date.today().isoformat()
+    spec_text = spec_text.lstrip("﻿").replace("\r\n", "\n")
 
     for req_id, block in delta.requirements("MODIFIED").items():
         spec_text = spec_text.replace(split_requirements(spec_text)[req_id], block)
@@ -147,17 +201,33 @@ def merge(delta_text: str, spec_text: str, today: str | None = None) -> str:
         spec_text = spec_text.replace(split_requirements(spec_text)[req_id], "")
     added = "".join("\n" + block for block in delta.requirements("ADDED").values())
     if added:
-        spec_text = insert_before_section(spec_text, "## Decisiones", added)
-    row = f"| {today} | {delta.frontmatter.get('pbi', '')} | {delta.frontmatter.get('title', '')} |\n"
-    spec_text = spec_text.rstrip("\n") + "\n" + row
+        spec_text = insert_before_sections(spec_text, ("## Decisiones", "## Historial"), added)
+    row_text = f"| {today} | {delta.frontmatter.get('pbi', '')} | {delta.frontmatter.get('title', '')} |"
+    spec_text = append_history_row(spec_text, row_text)
     return re.sub(r"\n{3,}", "\n\n", spec_text)
 
 
-def insert_before_section(text: str, heading: str, insertion: str) -> str:
-    index = text.find(f"\n{heading}")
-    if index < 0:
+def insert_before_sections(text: str, headings: tuple[str, ...], insertion: str) -> str:
+    positions = [p for p in (text.find(f"\n{heading}") for heading in headings) if p >= 0]
+    if not positions:
         return text.rstrip("\n") + "\n" + insertion
+    index = min(positions)
     return text[:index].rstrip("\n") + "\n" + insertion + "\n" + text[index:]
+
+
+def append_history_row(text: str, row_text: str) -> str:
+    lines = text.split("\n")
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == "## Historial")
+    except StopIteration:
+        return text.rstrip("\n") + "\n\n## Historial\n\n" + HISTORY_TABLE_HEADER + row_text + "\n"
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    table_rows = [i for i in range(start + 1, end) if lines[i].startswith("|")]
+    if table_rows:
+        lines.insert(table_rows[-1] + 1, row_text)
+    else:
+        lines[start + 1 : start + 1] = ["", *HISTORY_TABLE_HEADER.rstrip("\n").split("\n"), row_text]
+    return "\n".join(lines)
 
 
 def spec_path_for(delta_path: Path) -> Path:
@@ -166,14 +236,14 @@ def spec_path_for(delta_path: Path) -> Path:
 
 def merge_and_archive(delta_path: Path, today: str | None = None) -> Path:
     today = today or date.today().isoformat()
-    delta_text = delta_path.read_text(encoding="utf-8")
+    delta_text = read_text(delta_path)
     delta = parse_delta(delta_text)
     if delta.frontmatter.get("status") not in ("approved", "implemented"):
         raise SddError(f"el delta está en '{delta.frontmatter.get('status')}'; solo se fusiona approved o implemented")
     spec_path = spec_path_for(delta_path)
     if not spec_path.exists():
         raise SddError(f"no existe {spec_path}")
-    merged = merge(delta_text, spec_path.read_text(encoding="utf-8"), today)
+    merged = merge(delta_text, read_text(spec_path), today)
     spec_path.write_text(merged, encoding="utf-8")
     change_dir = delta_path.parent
     archive = change_dir.parent / "archive" / f"{today}-{change_dir.name}"
@@ -189,17 +259,17 @@ class Feature:
     title: str
     path: Path
     requirements: dict[str, str]
-    open_deltas: list[Delta]
+    open_deltas: list[tuple[Path, Delta]]
     last_change: str
 
 
 def load_features(docs: Path) -> list[Feature]:
     features: list[Feature] = []
     for spec_path in sorted((docs / "features").glob("*/spec.md")):
-        text = spec_path.read_text(encoding="utf-8")
+        text = read_text(spec_path)
         frontmatter, _ = parse_frontmatter(text)
         open_deltas = [
-            parse_delta(path.read_text(encoding="utf-8"))
+            (path, parse_delta(read_text(path)))
             for path in sorted(spec_path.parent.glob("changes/*/delta.md"))
             if "archive" not in path.parts
         ]
@@ -215,56 +285,132 @@ def load_features(docs: Path) -> list[Feature]:
     return features
 
 
-def row(*cells: str) -> str:
-    return "|" + "|".join(f" {cell} " if cell else " " for cell in cells) + "|"
-
-
 def requirement_title(block: str) -> str:
     match = REQ_HEADING.match(block)
     return match.group(2).strip() if match else ""
 
 
-def code_files(root: Path):
-    for path in root.rglob("*"):
-        if path.is_file() and path.suffix in CODE_EXTENSIONS and not (SKIP_DIRS & set(path.parts)) and "docs" not in path.parts:
-            yield path
+def row(*cells: str) -> str:
+    return "|" + "|".join(f" {cell} " if cell else " " for cell in cells) + "|"
 
 
-def files_mentioning(root: Path, needle: str) -> list[Path]:
-    found: list[Path] = []
-    for path in code_files(root):
-        try:
-            if needle in path.read_text(encoding="utf-8", errors="ignore"):
-                found.append(path)
-        except OSError:
+@dataclass
+class Settings:
+    extensions: set[str]
+    skip_dirs: set[str]
+    languages: list[str] = field(default_factory=list)
+    self_service: list[str] = field(default_factory=list)
+    raw: dict = field(default_factory=dict)
+
+
+def default_settings() -> Settings:
+    return Settings(extensions=set(DEFAULT_EXTENSIONS), skip_dirs=set(DEFAULT_SKIP_DIRS))
+
+
+def split_list(value: str | None) -> list[str]:
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def find_language_pack(docs: Path, language: str) -> Path | None:
+    for candidate in (docs / "sdd" / "languages" / f"{language}.md", PLUGIN_LANGUAGES / f"{language}.md"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def load_settings(docs: Path) -> Settings:
+    settings = default_settings()
+    config = docs.parent / "sdd.json"
+    if config.exists():
+        settings.raw = json.loads(read_text(config))
+    settings.self_service = list(settings.raw.get("selfService", []))
+    settings.languages = list(settings.raw.get("languages", []))
+    extensions: set[str] = set()
+    for language in settings.languages:
+        pack = find_language_pack(docs, language)
+        if pack is None:
             continue
+        frontmatter, _ = parse_frontmatter(read_text(pack))
+        extensions |= set(split_list(frontmatter.get("extensions")))
+        settings.skip_dirs |= set(split_list(frontmatter.get("skipDirs")))
+    if extensions:
+        settings.extensions = extensions
+    return settings
+
+
+def check_settings(docs: Path) -> list[str]:
+    config = docs.parent / "sdd.json"
+    if not config.exists():
+        return []
+    try:
+        raw = json.loads(read_text(config))
+    except json.JSONDecodeError as error:
+        return [f"sdd.json no es JSON válido: {error}"]
+    errors: list[str] = []
+    for language in raw.get("languages", []):
+        pack = find_language_pack(docs, language)
+        if pack is None:
+            errors.append(f"paquete de lenguaje '{language}' no encontrado (docs/sdd/languages/{language}.md ni en el plugin)")
+            continue
+        frontmatter, _ = parse_frontmatter(read_text(pack))
+        if not frontmatter.get("owner"):
+            errors.append(f"paquete de lenguaje '{language}' sin owner")
+        if not split_list(frontmatter.get("extensions")):
+            errors.append(f"paquete de lenguaje '{language}' sin extensions")
+    return errors
+
+
+def mentions(root: Path, ids: set[str], settings: Settings) -> dict[str, list[Path]]:
+    found: dict[str, list[Path]] = {req_id: [] for req_id in ids}
+    if not ids:
+        return found
+    pattern = re.compile(r"(?<![\w-])(" + "|".join(re.escape(i) for i in sorted(ids, key=len, reverse=True)) + r")(?!\d)")
+    for current, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in settings.skip_dirs and not d.startswith(".") and d != "docs")
+        for name in sorted(files):
+            path = Path(current) / name
+            if path.suffix not in settings.extensions:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for req_id in set(pattern.findall(text)):
+                found[req_id].append(path)
     return found
+
+
+def uncovered(docs: Path) -> list[str]:
+    ids = {req_id for f in load_features(docs) for req_id in f.requirements}
+    found = mentions(docs.parent, ids, load_settings(docs))
+    return sorted(req_id for req_id, paths in found.items() if not paths)
 
 
 def build_index(docs: Path) -> dict[str, str]:
     features = load_features(docs)
-    root = docs.parent
 
     rows = ["| Feature | Título | Requisitos | Deltas abiertos | Último cambio |", "|---|---|---|---|---|"]
-    rows += [f"| {f.slug} | {f.title} | {len(f.requirements)} | {len(f.open_deltas)} | {f.last_change} |" for f in features]
+    rows += [row(f.slug, f.title, str(len(f.requirements)), str(len(f.open_deltas)), f.last_change) for f in features]
     open_rows = ["| PBI | Título | Feature | Estado |", "|---|---|---|---|"]
     for f in features:
-        open_rows += [f"| {d.frontmatter.get('pbi', '')} | {d.frontmatter.get('title', '')} | {f.slug} | {d.frontmatter.get('status', '')} |" for d in f.open_deltas]
+        open_rows += [row(d.frontmatter.get("pbi", ""), d.frontmatter.get("title", ""), f.slug, d.frontmatter.get("status", "")) for _, d in f.open_deltas]
     index = "# Índice de features\n\n" + INDEX_HEADER + "\n" + "\n".join(rows) + "\n"
     if len(open_rows) > 2:
         index += "\n## Deltas abiertos\n\n" + "\n".join(open_rows) + "\n"
 
-    req_rows = ["| Requisito | Título | Feature | Tests |", "|---|---|---|---|"]
+    req_rows = ["| Requisito | Título | Feature |", "|---|---|---|"]
     contracts: dict[str, dict[str, list[str]]] = {}
     for f in features:
         for req_id, block in f.requirements.items():
-            tests = len(files_mentioning(root, req_id))
-            req_rows.append(f"| {req_id} | {requirement_title(block)} | {f.slug} | {tests} |")
+            req_rows.append(row(req_id, requirement_title(block), f.slug))
             for kind, names in CONTRACT_LINE.findall(block):
-                for name in (n.strip() for n in names.split(",") if n.strip()):
-                    entry = contracts.setdefault(name, {"Publica": [], "Consume": []})
-                    entry[kind].append(f"{req_id} ({f.slug})")
-    req_index = "# Índice de requisitos\n\n" + INDEX_HEADER + "\n" + "\n".join(req_rows) + "\n"
+                for name in split_list(names):
+                    contracts.setdefault(name, {"Publica": [], "Consume": []})[kind].append(f"{req_id} ({f.slug})")
+    req_index = (
+        "# Índice de requisitos\n\n" + INDEX_HEADER
+        + "\nQué ficheros nombran cada requisito: `sdd.py where <REQ>`; requisitos sin ningún fichero: `sdd.py coverage`.\n\n"
+        + "\n".join(req_rows) + "\n"
+    )
 
     result = {"INDEX.md": index, "REQ-INDEX.md": req_index}
     if contracts:
@@ -276,6 +422,7 @@ def build_index(docs: Path) -> dict[str, str]:
 
 def write_index(docs: Path) -> list[Path]:
     written: list[Path] = []
+    (docs / "features").mkdir(parents=True, exist_ok=True)
     for name, content in build_index(docs).items():
         path = docs / "features" / name
         path.write_text(content, encoding="utf-8")
@@ -284,13 +431,15 @@ def write_index(docs: Path) -> list[Path]:
 
 
 def check_index(docs: Path) -> list[str]:
+    if not load_features(docs):
+        return []
     problems: list[str] = []
     for name, content in build_index(docs).items():
         path = docs / "features" / name
         shown = f"{docs.name}/features/{name}"
         if not path.exists():
             problems.append(f"{shown} no existe: ejecuta sdd.py index")
-        elif path.read_text(encoding="utf-8").replace("\r\n", "\n") != content:
+        elif read_text(path).replace("\r\n", "\n") != content:
             problems.append(f"{shown} desactualizado: ejecuta sdd.py index")
     return problems
 
@@ -308,19 +457,22 @@ def where(req_id: str, docs: Path) -> str:
 
     deltas = []
     for path in sorted((docs / "features").rglob("changes/**/delta.md")):
-        if req_id in path.read_text(encoding="utf-8"):
-            delta = parse_delta(path.read_text(encoding="utf-8"))
+        delta = parse_delta(read_text(path))
+        if delta.touches(req_id):
             state = "archive" if "archive" in path.parts else delta.frontmatter.get("status", "")
             deltas.append(f"  {delta.frontmatter.get('pbi', '')} {delta.frontmatter.get('title', '')} [{state}] {rel(path)}")
     lines.append("\nDeltas:" if deltas else "\nDeltas: ninguno")
     lines += deltas
 
-    tests = [f"  {rel(p)}" for p in files_mentioning(root, req_id)]
-    lines.append("\nCódigo y tests que lo nombran:" if tests else "\nCódigo y tests que lo nombran: ninguno")
-    lines += tests
+    files = [f"  {rel(p)}" for p in mentions(root, {req_id}, load_settings(docs))[req_id]]
+    lines.append("\nCódigo y tests que lo nombran:" if files else "\nCódigo y tests que lo nombran: ninguno")
+    lines += files
 
     try:
-        log = subprocess.run(["git", "log", "--oneline", f"--grep={req_id}"], cwd=root, capture_output=True, text=True, check=False).stdout.strip()
+        log = subprocess.run(
+            ["git", "log", "--oneline", "--perl-regexp", f"--grep={re.escape(req_id)}(?![0-9])"],
+            cwd=root, capture_output=True, text=True, check=False,
+        ).stdout.strip()
     except OSError:
         log = ""
     lines.append("\nCommits:" if log else "\nCommits: ninguno")
@@ -328,34 +480,70 @@ def where(req_id: str, docs: Path) -> str:
     return "\n".join(lines)
 
 
+def outside_self_service(files: list[str], globs: list[str]) -> list[str]:
+    def allowed(path: str) -> bool:
+        path = path.replace("\\", "/")
+        return any(
+            fnmatch.fnmatch(path, pattern) or (pattern.startswith("**/") and fnmatch.fnmatch(path, pattern[3:]))
+            for pattern in globs
+        )
+    return [f for f in files if not allowed(f)]
+
+
 def scan(root: Path) -> list[str]:
     errors: list[str] = []
+    added: dict[str, list[Path]] = {}
+    modified: dict[str, list[Path]] = {}
     for delta_path in sorted(root.rglob("changes/*/delta.md")):
         if "archive" in delta_path.parts:
             continue
-        text = delta_path.read_text(encoding="utf-8")
+        text = read_text(delta_path)
         found = lint_delta(text, delta_path.parent.name)
         spec_path = spec_path_for(delta_path)
         if spec_path.exists():
-            found += check_merge(text, spec_path.read_text(encoding="utf-8"))
+            found += check_merge(text, read_text(spec_path))
         else:
             found.append(f"no existe {spec_path}")
         errors += [f"{delta_path}: {problem}" for problem in found]
+        delta = parse_delta(text)
+        for req_id in delta.requirements("ADDED"):
+            added.setdefault(req_id, []).append(delta_path)
+        for req_id in delta.requirements("MODIFIED"):
+            modified.setdefault(req_id, []).append(delta_path)
+    for req_id, paths in sorted(added.items()):
+        if len(paths) > 1:
+            errors.append(f"{req_id} lo añaden dos deltas abiertos: " + ", ".join(str(p) for p in paths))
+    for req_id, paths in sorted(modified.items()):
+        if len(paths) > 1:
+            errors.append(f"{req_id} lo modifican dos deltas abiertos: " + ", ".join(str(p) for p in paths))
+    owners: dict[str, list[str]] = {}
+    if (root / "features").exists():
+        for feature in load_features(root):
+            for req_id in feature.requirements:
+                owners.setdefault(req_id, []).append(feature.slug)
+    for req_id, slugs in sorted(owners.items()):
+        if len(slugs) > 1:
+            errors.append(f"{req_id} está en dos specs: " + ", ".join(slugs))
+    errors += check_settings(root)
     return errors
 
 
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    if len(argv) < 2 or argv[1] not in ("lint", "check", "merge", "scan", "index", "where"):
+    commands = ("lint", "check", "merge", "scan", "index", "where", "coverage", "selfservice", "settings")
+    if len(argv) < 2 or argv[1] not in commands:
         print(__doc__)
         return 2
     command = argv[1]
     positional = [a for a in argv[2:] if not a.startswith("--")]
+    if command == "where":
+        docs = Path(positional[1]) if len(positional) > 1 else Path("docs")
+    else:
+        docs = Path(positional[0]) if positional else Path("docs")
     try:
         if command == "scan":
-            errors = scan(Path(positional[0] if positional else "docs"))
+            errors = scan(docs)
         elif command == "index":
-            docs = Path(positional[0] if positional else "docs")
             if "--check" in argv:
                 errors = check_index(docs)
             else:
@@ -366,15 +554,22 @@ def main(argv: list[str]) -> int:
             if not positional:
                 print("falta el id del requisito")
                 return 2
-            print(where(positional[0], Path(positional[1] if len(positional) > 1 else "docs")))
+            print(where(positional[0], docs))
             return 0
+        elif command == "coverage":
+            errors = [f"{req_id} sin ningún fichero de código que lo nombre" for req_id in uncovered(docs)]
+        elif command == "selfservice":
+            files = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+            errors = [f"fuera de selfService: {f}" for f in outside_self_service(files, load_settings(docs).self_service)]
+        elif command == "settings":
+            errors = check_settings(docs)
         else:
             delta_path = Path(argv[2])
-            text = delta_path.read_text(encoding="utf-8")
+            text = read_text(delta_path)
             if command == "lint":
                 errors = lint_delta(text, delta_path.parent.name)
             elif command == "check":
-                errors = check_merge(text, spec_path_for(delta_path).read_text(encoding="utf-8"))
+                errors = check_merge(text, read_text(spec_path_for(delta_path)))
             else:
                 today = argv[argv.index("--date") + 1] if "--date" in argv else None
                 archive = merge_and_archive(delta_path, today)

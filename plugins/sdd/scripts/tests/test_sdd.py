@@ -46,6 +46,7 @@ pbi: 1234
 title: Límite de intentos
 feature: registro-usuario
 status: approved
+approved_by: ana
 ---
 ## Por qué
 

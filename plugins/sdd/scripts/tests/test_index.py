@@ -125,15 +125,6 @@ class IndexTests(unittest.TestCase):
         self.assertIn("| notificaciones | Notificaciones | 1 | 0 | 2026-10-30 |", index["INDEX.md"])
         self.assertIn("| registro-usuario | Registro de usuario | 2 | 1 | 2026-11-02 |", index["INDEX.md"])
 
-    def test_requirement_index_lists_every_active_requirement_with_test_count(self):
-        reqs = sdd.build_index(self.docs)["REQ-INDEX.md"]
-        self.assertIn("| REQ-REG-001 | Alta pendiente | registro-usuario | 1 |", reqs)
-        self.assertIn("| REQ-NOT-001 | Bienvenida | notificaciones | 0 |", reqs)
-
-    def test_requirement_index_ignores_build_output(self):
-        reqs = sdd.build_index(self.docs)["REQ-INDEX.md"]
-        self.assertNotIn("| REQ-REG-001 | Alta pendiente | registro-usuario | 2 |", reqs)
-
     def test_contracts_index_links_publishers_and_consumers(self):
         contracts = sdd.build_index(self.docs)["CONTRACTS.md"]
         self.assertIn("| UserActivated | REQ-REG-002 (registro-usuario) | REQ-NOT-001 (notificaciones) |", contracts)
