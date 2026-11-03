@@ -1,7 +1,7 @@
 {
   "name": "sdd",
-  "version": "0.4.1",
-  "description": "Spec-Driven Development mínimo: un spec.md por feature, un delta.md por cambio, tres skills (/sdd-change, /sdd-impl, /sdd-merge) y un script que valida y fusiona.",
+  "version": "0.5.0",
+  "description": "Spec-Driven Development mínimo: un spec.md por feature, un delta.md por cambio, las skills /sdd (decide la fase por el estado del delta), /sdd-models y /sdd-languages, paquetes de lenguaje para C#, TypeScript y Python, y un script que valida, indexa y fusiona.",
   "author": {
     "name": "Rodrigo Valdez"
   },

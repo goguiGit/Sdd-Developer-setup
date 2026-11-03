@@ -4,19 +4,19 @@
     "name": "Rodrigo Valdez"
   },
   "metadata": {
-    "description": "Marketplace con el plugin sdd (Spec-Driven Development mínimo para Claude Code) y el plugin libraries (skills de uso de librerías)."
+    "description": "Marketplace con el plugin sdd (Spec-Driven Development mínimo para Claude Code, con paquetes de lenguaje) y el plugin libraries (catálogo de skills de librerías por stack)."
   },
   "plugins": [
     {
       "name": "sdd",
       "source": "./plugins/sdd",
-      "description": "Spec-Driven Development mínimo: spec.md por feature, delta.md por cambio y una skill /sdd que decide la fase por el estado del delta.",
-      "version": "0.4.1"
+      "description": "Spec-Driven Development mínimo: spec.md por feature, delta.md por cambio, /sdd decide la fase por el estado del delta; /sdd-models y /sdd-languages configuran modelos y paquetes de lenguaje.",
+      "version": "0.5.0"
     },
     {
       "name": "libraries",
       "source": "./plugins/libraries",
-      "description": "Skills de uso de librerías, una por librería. Instalación opcional.",
+      "description": "Catálogo de skills de uso de librerías, una por librería y stack. Instalación opcional.",
       "version": "0.1.1"
     }
   ]
