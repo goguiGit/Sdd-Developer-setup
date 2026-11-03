@@ -15,7 +15,6 @@ Exit code 1 when something is wrong.
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import os
 import re
@@ -107,7 +106,6 @@ def split_sections(body: str) -> dict[str, str]:
 
 
 def split_requirements(text: str) -> dict[str, str]:
-    """Maps each REQ id to its full block (heading included); a block ends at the next ### or ## heading."""
     blocks: dict[str, str] = {}
     boundaries = [match.start() for match in re.finditer(r"^##(?!#) ", text, re.MULTILINE)]
     matches = list(REQ_HEADING.finditer(text))
@@ -322,7 +320,10 @@ def load_settings(docs: Path) -> Settings:
     settings = default_settings()
     config = docs.parent / "sdd.json"
     if config.exists():
-        settings.raw = json.loads(read_text(config))
+        try:
+            settings.raw = json.loads(read_text(config))
+        except json.JSONDecodeError as error:
+            raise SddError(f"sdd.json no es JSON válido: {error}") from error
     settings.self_service = list(settings.raw.get("selfService", []))
     settings.languages = list(settings.raw.get("languages", []))
     extensions: set[str] = set()
@@ -360,13 +361,25 @@ def check_settings(docs: Path) -> list[str]:
     return errors
 
 
-def mentions(root: Path, ids: set[str], settings: Settings) -> dict[str, list[Path]]:
+def describe_settings(settings: Settings) -> list[str]:
+    return [
+        "extensiones: " + " ".join(sorted(settings.extensions)),
+        "carpetas saltadas: " + " ".join(sorted(settings.skip_dirs)),
+    ]
+
+
+def mentions(root: Path, ids: set[str], settings: Settings, docs: Path | None = None) -> dict[str, list[Path]]:
     found: dict[str, list[Path]] = {req_id: [] for req_id in ids}
     if not ids:
         return found
-    pattern = re.compile(r"(?<![\w-])(" + "|".join(re.escape(i) for i in sorted(ids, key=len, reverse=True)) + r")(?!\d)")
+    docs_folder = (docs or root / "docs").resolve()
+    alternatives = "|".join(re.escape(i).replace(r"\-", "[-_]") for i in sorted(ids, key=len, reverse=True))
+    pattern = re.compile(r"(?<![A-Za-z0-9-])(" + alternatives + r")(?![0-9])", re.IGNORECASE)
     for current, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if d not in settings.skip_dirs and not d.startswith(".") and d != "docs")
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in settings.skip_dirs and not d.startswith(".") and (Path(current) / d).resolve() != docs_folder
+        )
         for name in sorted(files):
             path = Path(current) / name
             if path.suffix not in settings.extensions:
@@ -375,14 +388,14 @@ def mentions(root: Path, ids: set[str], settings: Settings) -> dict[str, list[Pa
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            for req_id in set(pattern.findall(text)):
+            for req_id in {match.upper().replace("_", "-") for match in pattern.findall(text)}:
                 found[req_id].append(path)
     return found
 
 
 def uncovered(docs: Path) -> list[str]:
     ids = {req_id for f in load_features(docs) for req_id in f.requirements}
-    found = mentions(docs.parent, ids, load_settings(docs))
+    found = mentions(docs.parent, ids, load_settings(docs), docs)
     return sorted(req_id for req_id, paths in found.items() if not paths)
 
 
@@ -446,7 +459,9 @@ def check_index(docs: Path) -> list[str]:
 
 def where(req_id: str, docs: Path) -> str:
     root = docs.parent
-    rel = lambda p: str(p.relative_to(root)).replace("\\", "/")  # noqa: E731
+    def rel(p: Path) -> str:
+        return str(p.relative_to(root)).replace("\\", "/")
+
     lines: list[str] = []
     owner = next((f for f in load_features(docs) if req_id in f.requirements), None)
     if owner is None:
@@ -464,7 +479,7 @@ def where(req_id: str, docs: Path) -> str:
     lines.append("\nDeltas:" if deltas else "\nDeltas: ninguno")
     lines += deltas
 
-    files = [f"  {rel(p)}" for p in mentions(root, {req_id}, load_settings(docs))[req_id]]
+    files = [f"  {rel(p)}" for p in mentions(root, {req_id}, load_settings(docs), docs)[req_id]]
     lines.append("\nCódigo y tests que lo nombran:" if files else "\nCódigo y tests que lo nombran: ninguno")
     lines += files
 
@@ -480,14 +495,31 @@ def where(req_id: str, docs: Path) -> str:
     return "\n".join(lines)
 
 
+def glob_to_regex(pattern: str) -> re.Pattern[str]:
+    parts: list[str] = []
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith("**/", index):
+            parts.append("(?:.*/)?")
+            index += 3
+        elif pattern.startswith("**", index):
+            parts.append(".*")
+            index += 2
+        elif pattern[index] == "*":
+            parts.append("[^/]*")
+            index += 1
+        elif pattern[index] == "?":
+            parts.append("[^/]")
+            index += 1
+        else:
+            parts.append(re.escape(pattern[index]))
+            index += 1
+    return re.compile("".join(parts) + r"\Z")
+
+
 def outside_self_service(files: list[str], globs: list[str]) -> list[str]:
-    def allowed(path: str) -> bool:
-        path = path.replace("\\", "/")
-        return any(
-            fnmatch.fnmatch(path, pattern) or (pattern.startswith("**/") and fnmatch.fnmatch(path, pattern[3:]))
-            for pattern in globs
-        )
-    return [f for f in files if not allowed(f)]
+    patterns = [glob_to_regex(g.replace("\\", "/")) for g in globs]
+    return [f for f in files if not any(p.match(f.replace("\\", "/")) for p in patterns)]
 
 
 def scan(root: Path) -> list[str]:
@@ -563,6 +595,8 @@ def main(argv: list[str]) -> int:
             errors = [f"fuera de selfService: {f}" for f in outside_self_service(files, load_settings(docs).self_service)]
         elif command == "settings":
             errors = check_settings(docs)
+            if not errors:
+                print("\n".join(describe_settings(load_settings(docs))))
         else:
             delta_path = Path(argv[2])
             text = read_text(delta_path)

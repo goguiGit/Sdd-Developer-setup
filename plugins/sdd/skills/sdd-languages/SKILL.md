@@ -5,7 +5,7 @@ description: >-
 argument-hint: "[list | use <lang> | add <lang> --owner <persona> | check]"
 ---
 
-El flujo no depende del lenguaje; lo que sí depende (extensiones, carpetas a saltar, cómo se cita un requisito en un test, comandos de build y tests, ejemplos de los principios) vive en **paquetes de lenguaje**: un `.md` con frontmatter. Los del plugin están en `${CLAUDE_PLUGIN_ROOT}/skills/sdd/references/languages/` (`csharp`, `typescript`, `python`); los del repo, en `docs/sdd/languages/<lang>.md`. Los activos se listan en `sdd.json` → `languages`, y `/sdd` y el script (`index`, `where`, `coverage`) los usan.
+El flujo no depende del lenguaje; lo que sí depende (extensiones, carpetas a saltar, cómo se cita un requisito en un test, comandos de build y tests, ejemplos de los principios) vive en **paquetes de lenguaje**: un `.md` con frontmatter. Los del plugin están en `${CLAUDE_PLUGIN_ROOT}/skills/sdd/references/languages/` (`csharp`, `typescript`, `python`); los del repo, en `docs/sdd/languages/<lang>.md`. Los activos se listan en `sdd.json` → `languages`, y `/sdd` y el script (`where`, `coverage`) los usan.
 
 ## Qué hace según `$ARGUMENTS`
 

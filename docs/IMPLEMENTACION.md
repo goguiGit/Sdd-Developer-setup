@@ -82,7 +82,7 @@ La definición de cada skill (disparador, qué hace, qué no, modelo, cómo camb
 
 ## El script
 
-`plugins/sdd/scripts/sdd.py`, Python 3 sin dependencias fuera de la biblioteca estándar, a propósito: CI lo ejecuta con `actions/setup-python` y las skills con el Python del developer. Tests en `scripts/tests/` (`test_sdd.py` formato y fusión, `test_index.py` índices, `test_rules.py` reglas del lint, colisiones, cobertura, autoservicio y paquetes de lenguaje): `python -I -m unittest discover -s plugins/sdd/scripts/tests`, 52 tests. Cualquier regla nueva del formato entra primero como test.
+`plugins/sdd/scripts/sdd.py`, Python 3 sin dependencias fuera de la biblioteca estándar, a propósito: CI lo ejecuta con `actions/setup-python` y las skills con el Python del developer. Tests en `scripts/tests/` (`test_sdd.py` formato y fusión, `test_index.py` índices, `test_rules.py` reglas del lint, colisiones, cobertura, autoservicio y paquetes de lenguaje): `python -I -m unittest discover -s plugins/sdd/scripts/tests`, 57 tests. Cualquier regla nueva del formato entra primero como test.
 
 | Función | Qué hace |
 |---|---|
@@ -92,10 +92,10 @@ La definición de cada skill (disparador, qué hace, qué no, modelo, cómo camb
 | `merge_and_archive(ruta_delta, fecha)` | Rechaza `draft`, escribe el spec, mueve la carpeta a `archive/<fecha>-<id>-<slug>` y regenera los índices |
 | `scan(raíz)` | `lint` + `check` de todos los deltas abiertos (ignora `archive/`), un requisito en dos specs, dos deltas abiertos sobre el mismo requisito, y `check_settings` |
 | `build_index(docs)` / `write_index` / `check_index` | Genera `INDEX.md`, `REQ-INDEX.md` y `CONTRACTS.md` en `docs/features/`; `check_index` compara con lo escrito y devuelve qué está desactualizado (vacío si no hay features) |
-| `load_settings(docs)` / `check_settings(docs)` | Lee `sdd.json`, resuelve cada paquete de `languages` (`docs/sdd/languages/` primero, luego el plugin) y une sus `extensions` y `skipDirs`; sin paquetes, `default_settings()` con una lista amplia |
-| `mentions(raíz, ids, settings)` | Un solo recorrido del árbol podando `skipDirs`, carpetas que empiezan por `.` y `docs/`; busca los ids como palabra completa |
+| `load_settings(docs)` / `check_settings(docs)` / `describe_settings` | Lee `sdd.json` (inválido es un `SddError`, no un traceback), resuelve cada paquete de `languages` (`docs/sdd/languages/` primero, luego el plugin) y une sus `extensions` y `skipDirs`; sin paquetes, `default_settings()` con una lista amplia |
+| `mentions(raíz, ids, settings, docs)` | Un solo recorrido del árbol podando `skipDirs`, carpetas que empiezan por `.` y la carpeta `docs` real (no cualquier carpeta con ese nombre); busca los ids como palabra completa, también en minúsculas o con `_` (`test_x_req_reg_006`) |
 | `where(req, docs)` / `uncovered(docs)` | Bloque del spec, deltas que lo tocan, ficheros que lo nombran y `git log --grep`; requisitos sin ningún fichero |
-| `outside_self_service(ficheros, globs)` | Qué rutas no encajan en los patrones `selfService` (fnmatch, con `**/` como prefijo opcional) |
+| `outside_self_service(ficheros, globs)` | Qué rutas no encajan en los patrones `selfService`; el glob se traduce a regex para que `**/` case cero o más carpetas también en medio (`**/locales/**/*.json` acepta `locales/es.json`) |
 
 Los índices son deterministas y sin LLM: orden por slug y por id, tablas Markdown, cabecera "Generado por `sdd.py index`; no editar a mano". `REQ-INDEX.md` no lleva recuento de ficheros a propósito: cambiaría con cada commit de código y haría fallar `index --check` en PRs que no tocan docs; la pregunta "qué requisito no tiene test" la responde `coverage`. `CONTRACTS.md` solo se escribe si algún requisito lleva `Publica:` o `Consume:`.
 
@@ -120,7 +120,7 @@ El script lee solo `extensions` y `skipDirs` (para `where` y `coverage`) y compr
 
 - **CI de este repo** (`pull_request`, `push` a `main`): job `script-tests` (los tests del script; `if: github.repository == 'goguiGit/Sdd-Developer-setup'` para que no corra en los consumidores) y job `deltas` sobre el ejemplo, que debe dar `ok`.
 - **`workflow_call`** para los consumidores: el job `deltas`. Hace checkout del repo llamador y de este (`actions/checkout` con `repository: goguiGit/Sdd-Developer-setup` y `ref: github.job_workflow_sha`, de modo que la versión del script coincide con la del workflow que el consumidor referencia, sea `@main` o una etiqueta) y ejecuta `scan` y, si existe `docs/features/`, `index --check` sobre `inputs.docs_root`. Con `enforce: true` (por defecto) la PR falla si hay problemas; con `false`, solo anota avisos. Un repo recién preparado, con `docs/features/` vacío e índices generados por el instalador, pasa.
-- **Autoservicio, advisory**: en una PR con la etiqueta `self-service` (`inputs.self_service_label`), compara los ficheros del diff con `selfService` de `sdd.json` (`sdd.py selfservice`) y anota un aviso por cada fichero fuera. No bloquea: la etiqueta la pone una persona y la decisión final es suya; el aviso evita que un nivel 0 se cuele con un fichero de código.
+- **Autoservicio, advisory**: en una PR con la etiqueta `self-service` (`inputs.self_service_label`), compara los ficheros del diff con `selfService` de `sdd.json` (`sdd.py selfservice`) y anota un aviso por cada fichero fuera. No bloquea: la etiqueta la pone una persona y la decisión final es suya; el aviso evita que un nivel 0 se cuele con un fichero de código. `pull_request` declara los tipos `labeled` y `unlabeled` (aquí y en el snippet del consumidor) para que etiquetar dispare el check sin esperar a otro push. `enforce` se evalúa con `toJSON(inputs.enforce) != 'false'` porque fuera de `workflow_call` `inputs.enforce` es `null` y `null != false` daría `false`.
 
 El CI no ejecuta `claude plugin validate`: el runner no tiene Claude Code. Se ejecuta en local antes de la PR (ver "Verificar" en `CLAUDE.md`).
 

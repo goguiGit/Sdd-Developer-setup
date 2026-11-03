@@ -1,7 +1,7 @@
 ---
 name: python
 title: Python
-owner: Sdd-Developer-setup (soporte de tercera)
+owner: Sdd-Developer-setup (soporte de primera)
 extensions: .py
 skipDirs: __pycache__, .venv, venv, .pytest_cache, .mypy_cache, .tox, build, dist
 testCommand: python -m pytest

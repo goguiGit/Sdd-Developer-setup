@@ -104,4 +104,6 @@ Valen para cualquier lenguaje; las convenciones del lenguaje (PascalCase, snake_
 | `selfservice [docs]` | Lee rutas por stdin (por ejemplo `git diff --name-only main`) y dice cuáles quedan fuera de los patrones `selfService` de `sdd.json` |
 | `settings [docs]` | Que cada paquete de `languages` existe (repo o plugin), tiene `owner` y `extensions`; muestra extensiones y carpetas saltadas resultantes |
 
-Sin `languages` en `sdd.json`, `where` y `coverage` usan una lista amplia de extensiones y carpetas que cubre los ecosistemas comunes.
+Sin `languages` en `sdd.json`, `where` y `coverage` usan una lista amplia de extensiones y carpetas que cubre los ecosistemas comunes. Los ids se reconocen también en minúsculas o con guiones bajos (`test_x_req_reg_006`, `Method_REQ_REG_006`), que es como los escriben los tests de Python y C#.
+
+El script toma como raíz del repo la carpeta padre de `docs/`: ahí busca `sdd.json` y desde ahí recorren `where` y `coverage`. En CI, `docs_root` tiene que colgar de la raíz.

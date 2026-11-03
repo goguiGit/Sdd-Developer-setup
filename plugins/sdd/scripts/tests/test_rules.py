@@ -141,6 +141,21 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(sorted(str(p.name) for p in mentions["REQ-REG-0010"]), ["Other.cs"])
         self.assertEqual(sorted(str(p.name) for p in mentions["REQ-REG-001"]), ["RegistrationTests.cs"])
 
+    def test_mentions_find_ids_written_with_underscores_or_lowercase(self):
+        (self.root / "tests" / "test_reg.py").write_text("def test_fifth_wrong_code_req_abc_001():\n    pass\n", encoding="utf-8")
+        (self.root / "tests" / "Reg.cs").write_text("public void FifthWrongCode_REQ_ABC_002() { }\n", encoding="utf-8")
+        mentions = sdd.mentions(self.root, {"REQ-ABC-001", "REQ-ABC-002"}, sdd.default_settings())
+        self.assertEqual([p.name for p in mentions["REQ-ABC-001"]], ["test_reg.py"])
+        self.assertEqual([p.name for p in mentions["REQ-ABC-002"]], ["Reg.cs"])
+
+    def test_only_the_real_docs_folder_is_pruned(self):
+        nested = self.root / "src" / "docs"
+        nested.mkdir(parents=True)
+        (nested / "Notes.cs").write_text("// REQ-ABC-009\n", encoding="utf-8")
+        (self.root / "docs" / "Stray.cs").write_text("// REQ-ABC-009\n", encoding="utf-8")
+        mentions = sdd.mentions(self.root, {"REQ-ABC-009"}, sdd.default_settings(), docs=self.root / "docs")
+        self.assertEqual([p.name for p in mentions["REQ-ABC-009"]], ["Notes.cs"])
+
 
 class WhereBoundaryTests(unittest.TestCase):
     def setUp(self):
@@ -169,6 +184,10 @@ class SelfServiceTests(unittest.TestCase):
 
     def test_no_globs_means_everything_is_outside(self):
         self.assertEqual(sdd.outside_self_service(["docs/a.md"], []), ["docs/a.md"])
+
+    def test_double_star_in_the_middle_matches_zero_or_more_folders(self):
+        outside = sdd.outside_self_service(["src/locales/es.json", "locales/es.json", "src/i18n/deep/en.json", "src/App.ts"], ["**/locales/**/*.json", "**/i18n/**"])
+        self.assertEqual(outside, ["src/App.ts"])
 
 
 class LanguageSettingsTests(unittest.TestCase):
@@ -207,6 +226,16 @@ class LanguageSettingsTests(unittest.TestCase):
         packs.mkdir(parents=True)
         (packs / "go.md").write_text("---\nname: go\nextensions: .go\n---\n", encoding="utf-8")
         self.assertIn("paquete de lenguaje 'go' sin owner", sdd.check_settings(self.docs))
+
+    def test_invalid_sdd_json_is_a_clean_error(self):
+        (self.root / "sdd.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(sdd.SddError):
+            sdd.load_settings(self.docs)
+
+    def test_settings_summary_lists_extensions_and_skipped_folders(self):
+        lines = sdd.describe_settings(sdd.default_settings())
+        self.assertTrue(any(line.startswith("extensiones:") and ".cs" in line for line in lines))
+        self.assertTrue(any(line.startswith("carpetas saltadas:") and "node_modules" in line for line in lines))
 
 
 if __name__ == "__main__":
